@@ -2,6 +2,8 @@ package fileutils
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
@@ -14,23 +16,30 @@ type bencode struct {
 	List   []bencode
 	String string
 	Int    int64
+	Hash   [20]byte
 }
 
 // TorrentFile represents a flattened torrent file
-// TODO Add hash for the information struct
 type TorrentFile struct {
 	Announce    string
+	Hash        [20]byte
 	Length      uint64
 	Name        string
 	PieceLength uint64
 	Pieces      [][20]byte
 }
 
-func decode(reader *bufio.Reader) (*bencode, error) {
+// decode decodes a bencode file to a bencode object
+// buff represents the 'info' table from the torrent file
+// infoMap indicates bytes are to be appendended to buff
+func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*bencode, error) {
 	ben := &bencode{}
 	char, err := reader.ReadByte()
 	if err != nil {
 		return nil, err
+	}
+	if infoMap {
+		buff.WriteByte(char)
 	}
 	switch char {
 	case 'd':
@@ -41,11 +50,14 @@ func decode(reader *bufio.Reader) (*bencode, error) {
 				return nil, err
 			}
 			if ch == 'e' {
+				if infoMap {
+					buff.WriteByte(ch)
+				}
 				ben.Dict = dict
 				return ben, nil
 			}
 			reader.UnreadByte()
-			val, err := decode(reader)
+			val, err := decode(reader, buff, infoMap)
 			if err != nil {
 				return nil, err
 			}
@@ -54,15 +66,30 @@ func decode(reader *bufio.Reader) (*bencode, error) {
 				return nil, errors.New("Dictionary has a non string key")
 			}
 
-			if val, err = decode(reader); err != nil {
+			// We want to hash the info struct
+			if key == "info" {
+				infoMap = true
+			}
+
+			if val, err = decode(reader, buff, infoMap); err != nil {
 				return nil, err
 			}
+
+			if key == "info" {
+				infoMap = false
+				ben.Hash = sha1.Sum(buff.Bytes())
+				buff.Reset()
+			}
+
 			dict[key] = *val
 		}
 	case 'i':
 		intStr, err := reader.ReadString('e')
 		if err != nil {
 			return nil, err
+		}
+		if infoMap {
+			buff.WriteString(intStr)
 		}
 		intStr = intStr[:len(intStr)-1]
 		integer, err := strconv.ParseInt(intStr, 10, 64)
@@ -79,11 +106,14 @@ func decode(reader *bufio.Reader) (*bencode, error) {
 				return nil, err
 			}
 			if ch == 'e' {
+				if infoMap {
+					buff.WriteByte(ch)
+				}
 				ben.List = list
 				return ben, nil
 			}
 			reader.UnreadByte()
-			value, err := decode(reader)
+			value, err := decode(reader, buff, infoMap)
 			if err != nil {
 				return nil, err
 			}
@@ -95,20 +125,26 @@ func decode(reader *bufio.Reader) (*bencode, error) {
 		if err != nil {
 			return nil, err
 		}
+		if infoMap {
+			buff.WriteString(strLen[1:])
+		}
 		strLen = strLen[:len(strLen)-1]
 		length, err := strconv.ParseUint(strLen, 10, 64)
 		if err != nil {
 			return nil, err
 		}
-		buff := make([]byte, length)
-		n, err := io.ReadFull(reader, buff)
+		buf := make([]byte, length)
+		n, err := io.ReadFull(reader, buf)
 		if err != nil {
 			return nil, err
 		}
 		if n != int(length) {
 			return nil, errors.New("String of the wrong length")
 		}
-		ben.String = string(buff)
+		if infoMap {
+			buff.Write(buf)
+		}
+		ben.String = string(buf)
 		return ben, nil
 	}
 }
@@ -160,6 +196,7 @@ func prettyBencode(ben *bencode) (*TorrentFile, error) {
 	}
 	return &TorrentFile{
 		Announce:    announce.String,
+		Hash:        ben.Hash,
 		Length:      uint64(dict["length"].Int),
 		Name:        dict["name"].String,
 		PieceLength: uint64(dict["piece length"].Int),
@@ -173,7 +210,7 @@ func OpenTorrent(path string) (*TorrentFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	bencode, err := decode(bufio.NewReader(file))
+	bencode, err := decode(bufio.NewReader(file), new(bytes.Buffer), false)
 	if err != nil {
 		return nil, err
 	}

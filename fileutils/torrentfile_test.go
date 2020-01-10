@@ -8,10 +8,12 @@ import (
 	"testing"
 )
 
+// set write to true to rewrite over the reference
 const write bool = false
+
 const testFolder string = "testData"
 const torrentFile string = "debian-10.2.0-amd64-netinst.iso.torrent"
-const referenceFile string = "debian-10.2.0-amd64-netinst.iso.torrent.reference.json"
+const referenceFile string = torrentFile + ".reference.json"
 
 func TestOpenTorrent(t *testing.T) {
 	torrent, err := OpenTorrent(filepath.Join(testFolder, torrentFile))
