@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strconv"
 )
 
 // TorrentFile represents a flattened torrent file
@@ -84,4 +86,23 @@ func OpenTorrent(path string) (*TorrentFile, error) {
 		return nil, err
 	}
 	return prettyBencode(bencode)
+}
+
+// GetAnnounceURL builds the url to call the announcer from a peer id and a port number
+func (t *TorrentFile) GetAnnounceURL(id [20]byte, port uint16) (string, error) {
+	announceURL, err := url.Parse(t.Announce)
+	if err != nil {
+		return "", err
+	}
+	parameters := url.Values{
+		"info_hash":  []string{string(t.Hash[:])},
+		"peer_id":    []string{string(string(id[:]))},
+		"port":       []string{strconv.Itoa(int(port))},
+		"uploaded":   []string{"0"},
+		"downloaded": []string{"0"},
+		"left":       []string{strconv.Itoa(int(t.Length))},
+		"compact":    []string{"1"},
+	}
+	announceURL.RawQuery = parameters.Encode()
+	return announceURL.String(), nil
 }
