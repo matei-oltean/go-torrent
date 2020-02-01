@@ -14,6 +14,7 @@ const write bool = false
 const testFolder string = "testData"
 const torrentFile string = "debian-10.2.0-amd64-netinst.iso.torrent"
 const referenceFile string = torrentFile + ".reference.json"
+const referenceUrl string = "announceURL"
 
 func TestOpenTorrent(t *testing.T) {
 	torrent, err := OpenTorrent(filepath.Join(testFolder, torrentFile))
@@ -41,5 +42,23 @@ func TestOpenTorrent(t *testing.T) {
 	}
 	if !reflect.DeepEqual(torrent, expected) {
 		t.Error("Parsed torrentfile is not equal to the reference.")
+	}
+}
+
+func TestGetAnnounceURL(t *testing.T) {
+	torrent, err := OpenTorrent(filepath.Join(testFolder, torrentFile))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	var port uint16 = 6882
+	id := [20]byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
+	url, _ := torrent.GetAnnounceURL(id, port)
+
+	referencePath := filepath.Join(testFolder, referenceUrl)
+	expectedURL, _ := ioutil.ReadFile(referencePath)
+
+	if !reflect.DeepEqual([]byte(url), expectedURL) {
+		t.Error("Crafted URL is not equal to the reference.")
 	}
 }
