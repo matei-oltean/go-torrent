@@ -14,7 +14,7 @@ const write bool = false
 const testFolder string = "testData"
 const torrentFile string = "debian-10.2.0-amd64-netinst.iso.torrent"
 const referenceFile string = torrentFile + ".reference.json"
-const referenceUrl string = "announceURL"
+const referenceURL string = "announceURL"
 
 func TestOpenTorrent(t *testing.T) {
 	torrent, err := OpenTorrent(filepath.Join(testFolder, torrentFile))
@@ -55,7 +55,7 @@ func TestGetAnnounceURL(t *testing.T) {
 	id := [20]byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
 	url, _ := torrent.GetAnnounceURL(id, port)
 
-	referencePath := filepath.Join(testFolder, referenceUrl)
+	referencePath := filepath.Join(testFolder, referenceURL)
 	expectedURL, _ := ioutil.ReadFile(referencePath)
 
 	if !reflect.DeepEqual([]byte(url), expectedURL) {

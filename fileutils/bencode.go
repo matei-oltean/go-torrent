@@ -5,23 +5,24 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 )
 
 // Bencode represents a generic bencoded file
 type Bencode struct {
-	Dict   map[string]Bencode
-	List   []Bencode
-	String string
-	Int    int64
-	Hash   [20]byte
+	Dict map[string]Bencode
+	List []Bencode
+	Str  string
+	Int  int64
+	Hash [20]byte
 }
 
-// Decode decodes a bencode file to a bencode object
+// decode decodes a bencode file to a bencode object
 // buff represents the 'info' table from the torrent file
 // infoMap indicates bytes are to be appendended to buff
-func Decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, error) {
+func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, error) {
 	ben := &Bencode{}
 	char, err := reader.ReadByte()
 	if err != nil {
@@ -46,11 +47,11 @@ func Decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 				return ben, nil
 			}
 			reader.UnreadByte()
-			val, err := Decode(reader, buff, infoMap)
+			val, err := decode(reader, buff, infoMap)
 			if err != nil {
 				return nil, err
 			}
-			key := val.String
+			key := val.Str
 			if key == "" {
 				return nil, errors.New("Dictionary has a non string key")
 			}
@@ -60,7 +61,7 @@ func Decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 				infoMap = true
 			}
 
-			if val, err = Decode(reader, buff, infoMap); err != nil {
+			if val, err = decode(reader, buff, infoMap); err != nil {
 				return nil, err
 			}
 
@@ -102,7 +103,7 @@ func Decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 				return ben, nil
 			}
 			reader.UnreadByte()
-			value, err := Decode(reader, buff, infoMap)
+			value, err := decode(reader, buff, infoMap)
 			if err != nil {
 				return nil, err
 			}
@@ -133,7 +134,23 @@ func Decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 		if infoMap {
 			buff.Write(buf)
 		}
-		ben.String = string(buf)
+		ben.Str = string(buf)
 		return ben, nil
 	}
+}
+
+func (ben Bencode) String() string {
+	if ben.Str != "" {
+		return ben.Str
+	}
+	if ben.Int != 0 {
+		return strconv.Itoa(int(ben.Int))
+	}
+	if ben.List != nil {
+		return fmt.Sprintf("%+v", ben.List)
+	}
+	if ben.Dict != nil {
+		return fmt.Sprintf("%+v", ben.Dict)
+	}
+	return fmt.Sprintf("%+v", ben.Hash)
 }
