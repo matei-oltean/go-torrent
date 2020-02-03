@@ -32,13 +32,13 @@ func splitPieces(pieces string) ([][20]byte, error) {
 	return hashes, nil
 }
 
-func prettyBencode(ben *Bencode) (*TorrentFile, error) {
+func prettyTorrentBencode(ben *Bencode) (*TorrentFile, error) {
 	dic := ben.Dict
 	if dic == nil {
 		return nil, errors.New("Torrent file has no dictionary")
 	}
 	announce, ok := dic["announce"]
-	if !ok || announce.String == "" {
+	if !ok || announce.Str == "" {
 		return nil, errors.New("Torrent file missing announce key")
 	}
 	info, ok := dic["info"]
@@ -47,7 +47,7 @@ func prettyBencode(ben *Bencode) (*TorrentFile, error) {
 	}
 	dict := info.Dict
 	for _, key := range [2]string{"name", "pieces"} {
-		if elem, ok := dict[key]; !ok || elem.String == "" {
+		if elem, ok := dict[key]; !ok || elem.Str == "" {
 			return nil, fmt.Errorf("Info dictionary missing key %s", key)
 		}
 	}
@@ -61,15 +61,15 @@ func prettyBencode(ben *Bencode) (*TorrentFile, error) {
 			return nil, fmt.Errorf("Negative value for %s: %d", key, elem.Int)
 		}
 	}
-	pieces, err := splitPieces(dict["pieces"].String)
+	pieces, err := splitPieces(dict["pieces"].Str)
 	if err != nil {
 		return nil, err
 	}
 	return &TorrentFile{
-		Announce:    announce.String,
+		Announce:    announce.Str,
 		Hash:        ben.Hash,
 		Length:      uint64(dict["length"].Int),
-		Name:        dict["name"].String,
+		Name:        dict["name"].Str,
 		PieceLength: uint64(dict["piece length"].Int),
 		Pieces:      pieces,
 	}, nil
@@ -81,11 +81,11 @@ func OpenTorrent(path string) (*TorrentFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	bencode, err := Decode(bufio.NewReader(file), new(bytes.Buffer), false)
+	bencode, err := decode(bufio.NewReader(file), new(bytes.Buffer), false)
 	if err != nil {
 		return nil, err
 	}
-	return prettyBencode(bencode)
+	return prettyTorrentBencode(bencode)
 }
 
 // GetAnnounceURL builds the url to call the announcer from a peer id and a port number
