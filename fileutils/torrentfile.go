@@ -81,6 +81,7 @@ func OpenTorrent(path string) (*TorrentFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 	bencode, err := decode(bufio.NewReader(file), new(bytes.Buffer), false)
 	if err != nil {
 		return nil, err

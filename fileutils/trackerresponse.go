@@ -92,6 +92,9 @@ func GetTrackerResponse(announceURL string) (*TrackerResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	defer response.Body.Close()
+
 	if response.StatusCode != 200 {
 		return nil, fmt.Errorf("Received a non 200 code from the tracker: %s", response.Status)
 	}
