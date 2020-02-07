@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/matei-oltean/go-torrent/fileutils"
+	"github.com/matei-oltean/go-torrent/peer"
 )
 
 func main() {
@@ -18,4 +19,11 @@ func main() {
 		println(err.Error())
 	}
 	fmt.Printf("%+v\n", response)
+	peer, err := peer.New(torrentFile.Hash, id, response.PeersAddresses[0])
+	if err != nil {
+		println(err.Error())
+	} else {
+		fmt.Printf("%+v\n", peer)
+		peer.Conn.Close()
+	}
 }

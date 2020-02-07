@@ -1,18 +1,21 @@
 package messaging
 
-// PROTOCOL is the used protocol in our communications
-const PROTOCOL string = "BitTorrent protocol"
+// Protocol is the used protocol in our communications
+const Protocol string = "BitTorrent protocol"
+
+// HandshakeSize is the size of a handshake message
+// length of protocol + protocol + extensions + metadata + id
+const HandshakeSize int = 1 + len(Protocol) + 8 + 20 + 20
 
 // GenerateHandshake generates the handshake message
 func GenerateHandshake(metadataHash, id [20]byte) []byte {
-	protocolLen := len(PROTOCOL)
-	handshakeLen := 1 + protocolLen + 8 + 20 + 20
-	res := make([]byte, handshakeLen)
+	protocolLen := len(Protocol)
+	res := make([]byte, HandshakeSize)
 	// format is:
 	// length of the protocol
 	res[0] = byte(protocolLen)
 	// protocol
-	copy(res[1:], PROTOCOL)
+	copy(res[1:], Protocol)
 	// 8 bytes for implemented extensions; will be left blank
 	// 20 bytes for the the hash of the metadata of the torrent
 	copy(res[1+protocolLen+8:], metadataHash[:])
