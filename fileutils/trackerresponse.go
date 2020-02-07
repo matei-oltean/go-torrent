@@ -8,24 +8,19 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 )
 
-// Peer represents a peer: its IP and port
-type Peer struct {
-	IP   net.IP
-	Port uint16
-}
-
 // TrackerResponse represents the tracker response to a get message
-// Peers use IPv4
-// Peers6 use IPv6
+// PeersAddresses are addresses from peers that use IPv4
+// Peers6Addresses are addresses from peers that use IPv6
 type TrackerResponse struct {
-	Interval uint64
-	Peers    []Peer
-	Peers6   []Peer
+	Interval        uint64
+	PeersAddresses  []string
+	Peers6Addresses []string
 }
 
-func parsePeerList(peers string, ipv6 bool) ([]Peer, error) {
+func parsePeerList(peers string, ipv6 bool) ([]string, error) {
 	peerBytes := []byte(peers)
 	ipSize := net.IPv4len
 	if ipv6 {
@@ -35,14 +30,11 @@ func parsePeerList(peers string, ipv6 bool) ([]Peer, error) {
 	if len(peerBytes)%peerSize != 0 {
 		return nil, fmt.Errorf("Peers has a length not divisible by %d: %d", peerSize, len(peerBytes))
 	}
-	peerList := make([]Peer, len(peerBytes)/peerSize)
+	peerList := make([]string, len(peerBytes)/peerSize)
 	for i := 0; i < len(peerBytes); i += peerSize {
 		ip := net.IP(peerBytes[i : i+ipSize])
 		port := binary.BigEndian.Uint16(peerBytes[i+ipSize : i+peerSize])
-		peerList[i/peerSize] = Peer{
-			IP:   ip,
-			Port: port,
-		}
+		peerList[i/peerSize] = net.JoinHostPort(ip.String(), strconv.Itoa(int(port)))
 	}
 	return peerList, nil
 }
@@ -72,7 +64,7 @@ func prettyTrackerBencode(ben *Bencode) (*TrackerResponse, error) {
 		return nil, err
 	}
 
-	var ip6Peers []Peer = nil
+	var ip6Peers []string = nil
 	if peers6, ok := dic["peers6"]; ok && peers6.Str != "" {
 		if parsed, err := parsePeerList(peers6.Str, true); err == nil {
 			ip6Peers = parsed
@@ -80,9 +72,9 @@ func prettyTrackerBencode(ben *Bencode) (*TrackerResponse, error) {
 	}
 
 	return &TrackerResponse{
-		Interval: uint64(interval.Int),
-		Peers:    peerList,
-		Peers6:   ip6Peers,
+		Interval:        uint64(interval.Int),
+		PeersAddresses:  peerList,
+		Peers6Addresses: ip6Peers,
 	}, nil
 }
 
