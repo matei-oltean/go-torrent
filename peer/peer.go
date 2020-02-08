@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/matei-oltean/go-torrent/messaging"
+	"github.com/matei-oltean/go-torrent/utils"
 )
 
 // Peer represents a connection to a peer
 type Peer struct {
-	Conn net.Conn
-	ID   [20]byte
+	Conn     net.Conn
+	ID       [20]byte
+	Bitfield utils.Bitfield
 }
 
 // New creates a new peer from a metadata hash, client id and peer address
@@ -53,8 +55,17 @@ func New(metadataHash, id [20]byte, address string) (*Peer, error) {
 
 	peerID := [20]byte{}
 	copy(peerID[:], received[len(received)-20:])
+
+	// next we should receive a bitfield message
+	bitfield, err := messaging.ReadBitfield(conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
 	return &Peer{
-		Conn: conn,
-		ID:   peerID,
+		Conn:     conn,
+		ID:       peerID,
+		Bitfield: bitfield,
 	}, nil
 }
