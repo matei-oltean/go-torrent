@@ -9,7 +9,7 @@ import (
 )
 
 // messageType represent the different types of peer messages
-type messageType int
+type messageType uint8
 
 const (
 	choke messageType = iota
@@ -27,6 +27,16 @@ const (
 type message struct {
 	Type    messageType
 	Payload []byte
+}
+
+func (msg *message) serialise() []byte {
+	// +1 to account for the message id
+	payLen := uint32(len(msg.Payload) + 1)
+	serialised := make([]byte, 4+payLen)
+	binary.BigEndian.PutUint32(serialised, payLen)
+	serialised[4] = byte(msg.Type)
+	copy(serialised[5:], msg.Payload)
+	return serialised
 }
 
 // read reads and parses a message coming from a connection
@@ -58,10 +68,26 @@ func read(reader io.Reader) (*message, error) {
 	}, nil
 }
 
+// readMessage is a wrapper around read
+// it reads and parses messages from the connection
+// until an non keepalive message is received
+// which is returned
+func readMessage(reader io.Reader) (*message, error) {
+	var message *message = nil
+	var err error = nil
+	for message == nil && err == nil {
+		message, err = read(reader)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return message, nil
+}
+
 // ReadBitfield reads a message and returns its bitfield
 // If the message is not a bitfield message, returns an error
 func ReadBitfield(reader io.Reader) (utils.Bitfield, error) {
-	message, err := read(reader)
+	message, err := readMessage(reader)
 	if err != nil {
 		return nil, err
 	}

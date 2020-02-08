@@ -19,7 +19,7 @@ type Peer struct {
 
 // New creates a new peer from a metadata hash, client id and peer address
 func New(metadataHash, id [20]byte, address string) (*Peer, error) {
-	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
 	if err != nil {
 		return nil, err
 	}
