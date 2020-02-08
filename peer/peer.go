@@ -15,6 +15,7 @@ type Peer struct {
 	Conn     net.Conn
 	ID       [20]byte
 	Bitfield utils.Bitfield
+	Choked   bool
 }
 
 // New creates a new peer from a metadata hash, client id and peer address
@@ -67,5 +68,20 @@ func New(metadataHash, id [20]byte, address string) (*Peer, error) {
 		Conn:     conn,
 		ID:       peerID,
 		Bitfield: bitfield,
+		Choked:   true,
 	}, nil
+}
+
+// Unchoke sends an unchoke message
+func (peer *Peer) Unchoke() error {
+	unchokeMsg := messaging.Unchoke()
+	_, err := peer.Conn.Write(unchokeMsg)
+	return err
+}
+
+// Interested sends an interested message
+func (peer *Peer) Interested() error {
+	interestedMsg := messaging.Interested()
+	_, err := peer.Conn.Write(interestedMsg)
+	return err
 }

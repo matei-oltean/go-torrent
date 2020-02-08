@@ -29,16 +29,6 @@ type message struct {
 	Payload []byte
 }
 
-func (msg *message) serialise() []byte {
-	// +1 to account for the message id
-	payLen := uint32(len(msg.Payload) + 1)
-	serialised := make([]byte, 4+payLen)
-	binary.BigEndian.PutUint32(serialised, payLen)
-	serialised[4] = byte(msg.Type)
-	copy(serialised[5:], msg.Payload)
-	return serialised
-}
-
 // read reads and parses a message coming from a connection
 func read(reader io.Reader) (*message, error) {
 	// A message is composed as follows:
@@ -71,7 +61,7 @@ func read(reader io.Reader) (*message, error) {
 // readMessage is a wrapper around read
 // it reads and parses messages from the connection
 // until an non keepalive message is received
-// which is returned
+// which is then returned
 func readMessage(reader io.Reader) (*message, error) {
 	var message *message = nil
 	var err error = nil
@@ -95,4 +85,33 @@ func ReadBitfield(reader io.Reader) (utils.Bitfield, error) {
 		return nil, fmt.Errorf("expected a bitfield got a message of type %d instead", message.Type)
 	}
 	return message.Payload, nil
+}
+
+// serialise returns the byte array representing a message to be sent
+func (msg *message) serialise() []byte {
+	// +1 to account for the message id
+	payLen := uint32(len(msg.Payload) + 1)
+	serialised := make([]byte, 4+payLen)
+	binary.BigEndian.PutUint32(serialised, payLen)
+	serialised[4] = byte(msg.Type)
+	copy(serialised[5:], msg.Payload)
+	return serialised
+}
+
+// Unchoke returns a serialised unchoke message
+func Unchoke() []byte {
+	msg := &message{
+		Type:    unchoke,
+		Payload: []byte{},
+	}
+	return msg.serialise()
+}
+
+// Interested returns a serialised unchoke message
+func Interested() []byte {
+	msg := &message{
+		Type:    interested,
+		Payload: []byte{},
+	}
+	return msg.serialise()
 }
