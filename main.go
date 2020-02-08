@@ -5,12 +5,13 @@ import (
 
 	"github.com/matei-oltean/go-torrent/fileutils"
 	"github.com/matei-oltean/go-torrent/peer"
+	"github.com/matei-oltean/go-torrent/utils"
 )
 
 func main() {
 	torrentFilePath := "fileutils/testData/debian-10.2.0-amd64-netinst.iso.torrent"
 	torrentFile, _ := fileutils.OpenTorrent(torrentFilePath)
-	id := [20]byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
+	id := utils.ClientID()
 	var port uint16 = 6882
 	trackerURL, _ := torrentFile.GetAnnounceURL(id, port)
 	println(trackerURL)
