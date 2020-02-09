@@ -11,16 +11,17 @@ import (
 // MessageType represent the different types of peer messages
 type MessageType uint8
 
+// Message types
 const (
-	choke MessageType = iota
-	unchoke
-	interested
-	notInterested
-	have
-	bitfield
-	request
-	piece
-	cancel
+	MChoke MessageType = iota
+	MUnchoke
+	MInterested
+	MNotInterested
+	MHave
+	MBitfield
+	MRequest
+	MPiece
+	MCancel
 )
 
 // Message represents a Message: its type and payload
@@ -63,28 +64,28 @@ func readMessage(reader io.Reader) (*Message, error) {
 // until an non keepalive Message is received
 // which is then returned
 func Read(reader io.Reader) (*Message, error) {
-	var Message *Message = nil
+	var msg *Message = nil
 	var err error = nil
-	for Message == nil && err == nil {
-		Message, err = readMessage(reader)
+	for msg == nil && err == nil {
+		msg, err = readMessage(reader)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return Message, nil
+	return msg, nil
 }
 
 // ReadBitfield reads a Message and returns its bitfield
 // If the Message is not a bitfield Message, returns an error
 func ReadBitfield(reader io.Reader) (utils.Bitfield, error) {
-	Message, err := Read(reader)
+	msg, err := Read(reader)
 	if err != nil {
 		return nil, err
 	}
-	if Message.Type != bitfield {
-		return nil, fmt.Errorf("expected a bitfield got a Message of type %d instead", Message.Type)
+	if msg.Type != MBitfield {
+		return nil, fmt.Errorf("expected a bitfield got a message of type %d instead", msg.Type)
 	}
-	return Message.Payload, nil
+	return msg.Payload, nil
 }
 
 // serialise returns the byte array representing a Message to be sent
@@ -101,7 +102,7 @@ func (msg *Message) serialise() []byte {
 // Unchoke returns a serialised unchoke Message
 func Unchoke() []byte {
 	msg := &Message{
-		Type:    unchoke,
+		Type:    MUnchoke,
 		Payload: []byte{},
 	}
 	return msg.serialise()
@@ -110,8 +111,32 @@ func Unchoke() []byte {
 // Interested returns a serialised unchoke Message
 func Interested() []byte {
 	msg := &Message{
-		Type:    interested,
+		Type:    MInterested,
 		Payload: []byte{},
+	}
+	return msg.serialise()
+}
+
+// Have returns a have message for a chunk
+func Have(index int) []byte {
+	payload := make([]byte, 4)
+	binary.BigEndian.PutUint32(payload, uint32(index))
+	msg := &Message{
+		Type:    MHave,
+		Payload: payload,
+	}
+	return msg.serialise()
+}
+
+// Request returns a request message for a chunk
+func Request(index, begin, length int) []byte {
+	payload := make([]byte, 3*4)
+	binary.BigEndian.PutUint32(payload, uint32(index))
+	binary.BigEndian.PutUint32(payload[4:], uint32(begin))
+	binary.BigEndian.PutUint32(payload[8:], uint32(length))
+	msg := &Message{
+		Type:    MRequest,
+		Payload: payload,
 	}
 	return msg.serialise()
 }
