@@ -85,3 +85,8 @@ func (peer *Peer) Interested() error {
 	_, err := peer.Conn.Write(interestedMsg)
 	return err
 }
+
+// Read reads and parses the first non keepalive message from the connection
+func (peer *Peer) Read() (*messaging.Message, error) {
+	return messaging.Read(peer.Conn)
+}

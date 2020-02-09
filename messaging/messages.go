@@ -8,11 +8,11 @@ import (
 	"github.com/matei-oltean/go-torrent/utils"
 )
 
-// messageType represent the different types of peer messages
-type messageType uint8
+// MessageType represent the different types of peer messages
+type MessageType uint8
 
 const (
-	choke messageType = iota
+	choke MessageType = iota
 	unchoke
 	interested
 	notInterested
@@ -23,18 +23,18 @@ const (
 	cancel
 )
 
-// message represents a message: its type and payload
-type message struct {
-	Type    messageType
+// Message represents a Message: its type and payload
+type Message struct {
+	Type    MessageType
 	Payload []byte
 }
 
-// read reads and parses a message coming from a connection
-func read(reader io.Reader) (*message, error) {
-	// A message is composed as follows:
-	// message length (4 bytes big endian)
-	// message type (1 byte)
-	// message payload if any
+// readMessage reads and parses a Message coming from a connection
+func readMessage(reader io.Reader) (*Message, error) {
+	// A Message is composed as follows:
+	// Message length (4 bytes big endian)
+	// Message type (1 byte)
+	// Message payload if any
 
 	binLength := make([]byte, 4)
 	_, err := io.ReadFull(reader, binLength)
@@ -42,7 +42,7 @@ func read(reader io.Reader) (*message, error) {
 		return nil, err
 	}
 	msgLen := binary.BigEndian.Uint32(binLength)
-	// a msgLen of zero means it is a keepalive message
+	// a msgLen of zero means it is a keepalive Message
 	if msgLen == 0 {
 		return nil, nil
 	}
@@ -52,44 +52,44 @@ func read(reader io.Reader) (*message, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &message{
-		Type:    messageType(msgBuff[0]),
+	return &Message{
+		Type:    MessageType(msgBuff[0]),
 		Payload: msgBuff[1:],
 	}, nil
 }
 
-// readMessage is a wrapper around read
+// Read is a wrapper around readMessage
 // it reads and parses messages from the connection
-// until an non keepalive message is received
+// until an non keepalive Message is received
 // which is then returned
-func readMessage(reader io.Reader) (*message, error) {
-	var message *message = nil
+func Read(reader io.Reader) (*Message, error) {
+	var Message *Message = nil
 	var err error = nil
-	for message == nil && err == nil {
-		message, err = read(reader)
+	for Message == nil && err == nil {
+		Message, err = readMessage(reader)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return message, nil
+	return Message, nil
 }
 
-// ReadBitfield reads a message and returns its bitfield
-// If the message is not a bitfield message, returns an error
+// ReadBitfield reads a Message and returns its bitfield
+// If the Message is not a bitfield Message, returns an error
 func ReadBitfield(reader io.Reader) (utils.Bitfield, error) {
-	message, err := readMessage(reader)
+	Message, err := Read(reader)
 	if err != nil {
 		return nil, err
 	}
-	if message.Type != bitfield {
-		return nil, fmt.Errorf("expected a bitfield got a message of type %d instead", message.Type)
+	if Message.Type != bitfield {
+		return nil, fmt.Errorf("expected a bitfield got a Message of type %d instead", Message.Type)
 	}
-	return message.Payload, nil
+	return Message.Payload, nil
 }
 
-// serialise returns the byte array representing a message to be sent
-func (msg *message) serialise() []byte {
-	// +1 to account for the message id
+// serialise returns the byte array representing a Message to be sent
+func (msg *Message) serialise() []byte {
+	// +1 to account for the Message id
 	payLen := uint32(len(msg.Payload) + 1)
 	serialised := make([]byte, 4+payLen)
 	binary.BigEndian.PutUint32(serialised, payLen)
@@ -98,18 +98,18 @@ func (msg *message) serialise() []byte {
 	return serialised
 }
 
-// Unchoke returns a serialised unchoke message
+// Unchoke returns a serialised unchoke Message
 func Unchoke() []byte {
-	msg := &message{
+	msg := &Message{
 		Type:    unchoke,
 		Payload: []byte{},
 	}
 	return msg.serialise()
 }
 
-// Interested returns a serialised unchoke message
+// Interested returns a serialised unchoke Message
 func Interested() []byte {
-	msg := &message{
+	msg := &Message{
 		Type:    interested,
 		Payload: []byte{},
 	}
