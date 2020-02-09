@@ -4,8 +4,8 @@ package utils
 type Bitfield []byte
 
 // Get returns the value of the bitfield at a certain index
-func (bf Bitfield) Get(index uint) bool {
-	bucket := int(index / 8)
+func (bf Bitfield) Get(index int) bool {
+	bucket := index / 8
 	if bucket >= len(bf) {
 		return false
 	}
@@ -13,21 +13,21 @@ func (bf Bitfield) Get(index uint) bool {
 }
 
 // True sets bitfield value at a certain index to true
-func (bf Bitfield) True(index uint) {
-	bucket := int(index / 8)
-	if int(bucket) >= len(bf) {
+func (bf Bitfield) True(index int) {
+	bucket := index / 8
+	if bucket >= len(bf) {
 		return
 	}
 	bf[bucket] |= 1 << (7 - index%8)
 }
 
 // Set sets bitfield value at a certain index
-func (bf Bitfield) Set(index uint, value bool) {
+func (bf Bitfield) Set(index int, value bool) {
 	if value {
 		bf.True(index)
 		return
 	}
-	bucket := int(index / 8)
+	bucket := index / 8
 	if bucket >= len(bf) {
 		return
 	}

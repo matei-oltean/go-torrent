@@ -33,8 +33,8 @@ func parsePeerList(peers string, ipv6 bool) ([]string, error) {
 	peerList := make([]string, len(peerBytes)/peerSize)
 	for i := 0; i < len(peerBytes); i += peerSize {
 		ip := net.IP(peerBytes[i : i+ipSize])
-		port := binary.BigEndian.Uint16(peerBytes[i+ipSize : i+peerSize])
-		peerList[i/peerSize] = net.JoinHostPort(ip.String(), strconv.Itoa(int(port)))
+		port := int(binary.BigEndian.Uint16(peerBytes[i+ipSize : i+peerSize]))
+		peerList[i/peerSize] = net.JoinHostPort(ip.String(), strconv.Itoa(port))
 	}
 	return peerList, nil
 }

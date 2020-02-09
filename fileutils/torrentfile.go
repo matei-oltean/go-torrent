@@ -14,9 +14,9 @@ import (
 type TorrentFile struct {
 	Announce    string
 	Hash        [20]byte
-	Length      uint64
+	Length      int
 	Name        string
-	PieceLength uint64
+	PieceLength int
 	Pieces      [][20]byte
 }
 
@@ -68,9 +68,9 @@ func prettyTorrentBencode(ben *Bencode) (*TorrentFile, error) {
 	return &TorrentFile{
 		Announce:    announce.Str,
 		Hash:        ben.Hash,
-		Length:      uint64(dict["length"].Int),
+		Length:      dict["length"].Int,
 		Name:        dict["name"].Str,
-		PieceLength: uint64(dict["piece length"].Int),
+		PieceLength: dict["piece length"].Int,
 		Pieces:      pieces,
 	}, nil
 }
@@ -90,7 +90,7 @@ func OpenTorrent(path string) (*TorrentFile, error) {
 }
 
 // GetAnnounceURL builds the url to call the announcer from a peer id and a port number
-func (t *TorrentFile) GetAnnounceURL(id [20]byte, port uint16) (string, error) {
+func (t *TorrentFile) GetAnnounceURL(id [20]byte, port int) (string, error) {
 	announceURL, err := url.Parse(t.Announce)
 	if err != nil {
 		return "", err
@@ -98,10 +98,10 @@ func (t *TorrentFile) GetAnnounceURL(id [20]byte, port uint16) (string, error) {
 	parameters := url.Values{
 		"info_hash":  []string{string(t.Hash[:])},
 		"peer_id":    []string{string(string(id[:]))},
-		"port":       []string{strconv.Itoa(int(port))},
+		"port":       []string{strconv.Itoa(port)},
 		"uploaded":   []string{"0"},
 		"downloaded": []string{"0"},
-		"left":       []string{strconv.Itoa(int(t.Length))},
+		"left":       []string{strconv.Itoa(t.Length)},
 		"compact":    []string{"1"},
 	}
 	announceURL.RawQuery = parameters.Encode()

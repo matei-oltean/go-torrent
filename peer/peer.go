@@ -147,7 +147,7 @@ func (peer *Peer) read() (*chunk, error) {
 		if len(msg.Payload) != 4 {
 			return nil, fmt.Errorf("expected payload length 4 got %d instead", len(msg.Payload))
 		}
-		peer.set(uint(binary.BigEndian.Uint32(msg.Payload)))
+		peer.set(int(binary.BigEndian.Uint32(msg.Payload)))
 	case messaging.MPiece:
 		return parsePiece(msg.Payload)
 	}
@@ -156,11 +156,11 @@ func (peer *Peer) read() (*chunk, error) {
 
 // has return whether the peer has a certain piece
 func (peer *Peer) has(index int) bool {
-	return peer.bitfield.Get(uint(index))
+	return peer.bitfield.Get(index)
 }
 
 // set signifies that a peer has a new piece
-func (peer *Peer) set(index uint) {
+func (peer *Peer) set(index int) {
 	peer.bitfield.True(index)
 }
 

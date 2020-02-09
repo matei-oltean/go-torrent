@@ -28,7 +28,7 @@ func New(torrentPath string) (*Client, error) {
 		return nil, err
 	}
 	id := utils.ClientID()
-	var port uint16 = 6881
+	port := 6881
 	trackerURL := ""
 	var response *fileutils.TrackerResponse
 	// Try ports till 6889
@@ -52,8 +52,8 @@ func New(torrentPath string) (*Client, error) {
 
 // downloadPieces retrieves the file as a byte array
 func (client *Client) downloadPieces() ([]byte, error) {
-	fileLen := int(client.File.Length)
-	pieceLen := int(client.File.PieceLength)
+	fileLen := client.File.Length
+	pieceLen := client.File.PieceLength
 	numPieces := len(client.File.Pieces)
 	file := make([]byte, fileLen)
 	// Create chan of pieces to download
@@ -86,7 +86,7 @@ func (client *Client) downloadPieces() ([]byte, error) {
 		result := <-results
 		copy(file[result.Index*pieceLen:], result.Value)
 		done++
-		fmt.Printf("Downloaded %d/%d pieces (%f%%)\n", done, numPieces, float64(done)/float64(numPieces)*100)
+		fmt.Printf("Downloaded %d/%d pieces (%.2f%%)\n", done, numPieces, float64(done)/float64(numPieces)*100)
 	}
 
 	return file, nil
@@ -110,5 +110,9 @@ func (client *Client) Download(path string) error {
 		return err
 	}
 	_, err = outFile.Write(file)
-	return err
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Successfully saved file at %s\n", outPath)
+	return nil
 }

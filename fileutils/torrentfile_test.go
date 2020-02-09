@@ -51,7 +51,7 @@ func TestGetAnnounceURL(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	var port uint16 = 6882
+	port := 6882
 	id := [20]byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
 	url, _ := torrent.GetAnnounceURL(id, port)
 
