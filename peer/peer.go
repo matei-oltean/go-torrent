@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -220,10 +221,10 @@ func (peer *Peer) downloadPiece(piece *Piece) ([]byte, error) {
 func Download(handshake []byte, address string, pieces chan *Piece, results chan *Result) {
 	peer, err := new(handshake, address)
 	if err != nil {
-		fmt.Printf("Could not connect to peer at %s\n", address)
+		log.Printf("Could not connect to peer at %s\n", address)
 		return
 	}
-	fmt.Printf("Connected to peer at %s\n", address)
+	log.Printf("Connected to peer at %s\n", address)
 	defer peer.conn.Close()
 	peer.unchoke()
 	peer.interested()
@@ -237,7 +238,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 
 		res, err := peer.downloadPiece(piece)
 		if err != nil {
-			fmt.Printf("Could not download piece %d: %s\n", piece.Index, err.Error())
+			log.Printf("Could not download piece %d: %s\n", piece.Index, err.Error())
 			pieces <- piece
 			return
 		}
@@ -245,7 +246,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 		// check for the piece integrity
 		hash := sha1.Sum(res)
 		if !bytes.Equal(hash[:], piece.Hash[:]) {
-			fmt.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead",
+			log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead",
 				piece.Index, piece.Hash, hash)
 			pieces <- piece
 			continue

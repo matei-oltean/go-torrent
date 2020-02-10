@@ -1,7 +1,7 @@
 package client
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -28,11 +28,10 @@ func New(torrentPath string) (*Client, error) {
 		return nil, err
 	}
 	id := utils.ClientID()
-	port := 6881
 	trackerURL := ""
 	var response *fileutils.TrackerResponse
-	// Try ports till 6889
-	for ; port < 6890 && response == nil; port++ {
+	// Try ports from 6881 till 6889 in accordance with the specifications
+	for port := 6881; port < 6890 && response == nil; port++ {
 		trackerURL, err = torrentFile.GetAnnounceURL(id, port)
 		if err != nil {
 			return nil, err
@@ -86,7 +85,7 @@ func (client *Client) downloadPieces() ([]byte, error) {
 		result := <-results
 		copy(file[result.Index*pieceLen:], result.Value)
 		done++
-		fmt.Printf("Downloaded %d/%d pieces (%.2f%%)\n", done, numPieces, float64(done)/float64(numPieces)*100)
+		log.Printf("Downloaded %d/%d pieces (%.2f%%)\n", done, numPieces, float64(done)/float64(numPieces)*100)
 	}
 
 	return file, nil
@@ -113,6 +112,6 @@ func (client *Client) Download(path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Successfully saved file at %s\n", outPath)
+	log.Printf("Successfully saved file at %s\n", outPath)
 	return nil
 }
