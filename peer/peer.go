@@ -50,7 +50,7 @@ type peer struct {
 
 // new creates a new peer from a handshake and a peer address
 func new(handshake []byte, address string) (*peer, error) {
-	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
 		return nil, err
 	}

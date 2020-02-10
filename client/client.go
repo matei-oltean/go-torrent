@@ -13,10 +13,10 @@ import (
 
 // Client represents a client that wants to download a single file
 type Client struct {
-	ID       [20]byte
-	File     *fileutils.TorrentFile
-	PeerAddr *fileutils.TrackerResponse
-	folder   string
+	ID        [20]byte
+	File      *fileutils.TorrentFile
+	PeersAddr []string
+	folder    string
 }
 
 // New gets a new client from a torrent path
@@ -42,10 +42,10 @@ func New(torrentPath string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		ID:       id,
-		File:     torrentFile,
-		PeerAddr: response,
-		folder:   folder,
+		ID:        id,
+		File:      torrentFile,
+		PeersAddr: response.PeersAddresses,
+		folder:    folder,
 	}, nil
 }
 
@@ -75,7 +75,7 @@ func (client *Client) downloadPieces() ([]byte, error) {
 	handshake := messaging.GenerateHandshake(client.File.Hash, client.ID)
 
 	// Create workers to download the pieces
-	for _, peerAddress := range client.PeerAddr.Peers6Addresses {
+	for _, peerAddress := range client.PeersAddr {
 		go peer.Download(handshake, peerAddress, pieces, results)
 	}
 

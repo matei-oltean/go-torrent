@@ -12,12 +12,9 @@ import (
 )
 
 // TrackerResponse represents the tracker response to a get message
-// PeersAddresses are addresses from peers that use IPv4
-// Peers6Addresses are addresses from peers that use IPv6
 type TrackerResponse struct {
-	Interval        uint64
-	PeersAddresses  []string
-	Peers6Addresses []string
+	Interval       int
+	PeersAddresses []string
 }
 
 func parsePeerList(peers string, ipv6 bool) ([]string, error) {
@@ -64,17 +61,15 @@ func prettyTrackerBencode(ben *Bencode) (*TrackerResponse, error) {
 		return nil, err
 	}
 
-	var ip6Peers []string = nil
 	if peers6, ok := dic["peers6"]; ok && peers6.Str != "" {
 		if parsed, err := parsePeerList(peers6.Str, true); err == nil {
-			ip6Peers = parsed
+			peerList = append(peerList, parsed...)
 		}
 	}
 
 	return &TrackerResponse{
-		Interval:        uint64(interval.Int),
-		PeersAddresses:  peerList,
-		Peers6Addresses: ip6Peers,
+		Interval:       interval.Int,
+		PeersAddresses: peerList,
 	}, nil
 }
 
