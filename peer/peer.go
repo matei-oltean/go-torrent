@@ -41,15 +41,15 @@ type Result struct {
 	Value []byte
 }
 
-// Peer represents a connection to a peer
-type Peer struct {
+// peer represents a connection to a peer
+type peer struct {
 	conn     net.Conn
 	bitfield utils.Bitfield
 	choked   bool
 }
 
 // new creates a new peer from a handshake and a peer address
-func new(handshake []byte, address string) (*Peer, error) {
+func new(handshake []byte, address string) (*peer, error) {
 	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func new(handshake []byte, address string) (*Peer, error) {
 	startLen := 1 + len(messaging.Protocol)
 	if !bytes.Equal(received[:startLen], handshake[:startLen]) {
 		conn.Close()
-		return nil, fmt.Errorf("received handshake with the wrong protocol: %v", received[:startLen])
+		return nil, fmt.Errorf("received handshake with the wrong protocol: %s", received[:startLen])
 	}
 	// And same metadataHash
 	if !bytes.Equal(received[startLen+8:startLen+28], handshake[startLen+8:startLen+28]) {
@@ -93,7 +93,7 @@ func new(handshake []byte, address string) (*Peer, error) {
 		return nil, err
 	}
 
-	return &Peer{
+	return &peer{
 		conn:     conn,
 		bitfield: bitfield,
 		choked:   true,
@@ -101,16 +101,16 @@ func new(handshake []byte, address string) (*Peer, error) {
 }
 
 // unchoke sends an unchoke message
-func (peer *Peer) unchoke() error {
+func (p *peer) unchoke() error {
 	unchokeMsg := messaging.Unchoke()
-	_, err := peer.conn.Write(unchokeMsg)
+	_, err := p.conn.Write(unchokeMsg)
 	return err
 }
 
 // interested sends an interested message
-func (peer *Peer) interested() error {
+func (p *peer) interested() error {
 	interestedMsg := messaging.Interested()
-	_, err := peer.conn.Write(interestedMsg)
+	_, err := p.conn.Write(interestedMsg)
 	return err
 }
 
@@ -132,23 +132,23 @@ func parsePiece(payload []byte) (*chunk, error) {
 	}, nil
 }
 
-// Read reads and parses the first non keepalive message from the connection
+// read reads and parses the first non keepalive message from the connection
 // fills the argument and the length of the piece in case of a piece message
-func (peer *Peer) read() (*chunk, error) {
-	msg, err := messaging.Read(peer.conn)
+func (p *peer) read() (*chunk, error) {
+	msg, err := messaging.Read(p.conn)
 	if err != nil {
 		return nil, err
 	}
 	switch msg.Type {
 	case messaging.MChoke:
-		peer.choked = true
+		p.choked = true
 	case messaging.MUnchoke:
-		peer.choked = false
+		p.choked = false
 	case messaging.MHave:
 		if len(msg.Payload) != 4 {
 			return nil, fmt.Errorf("expected payload length 4 got %d instead", len(msg.Payload))
 		}
-		peer.set(int(binary.BigEndian.Uint32(msg.Payload)))
+		p.set(int(binary.BigEndian.Uint32(msg.Payload)))
 	case messaging.MPiece:
 		return parsePiece(msg.Payload)
 	}
@@ -156,28 +156,28 @@ func (peer *Peer) read() (*chunk, error) {
 }
 
 // has return whether the peer has a certain piece
-func (peer *Peer) has(index int) bool {
-	return peer.bitfield.Get(index)
+func (p *peer) has(index int) bool {
+	return p.bitfield.Get(index)
 }
 
 // set signifies that a peer has a new piece
-func (peer *Peer) set(index int) {
-	peer.bitfield.True(index)
+func (p *peer) set(index int) {
+	p.bitfield.Set(index)
 }
 
 // downloadPiece attempts to download a piece from the peer
-func (peer *Peer) downloadPiece(piece *Piece) ([]byte, error) {
+func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 	downloaded := 0
 	start := 0
 	inQueue := 0
 	res := make([]byte, piece.Length)
 
 	// Add a deadline so that we do not wait for stuck peers
-	peer.conn.SetDeadline(time.Now().Add(15 * time.Second))
-	defer peer.conn.SetDeadline(time.Time{})
+	p.conn.SetDeadline(time.Now().Add(15 * time.Second))
+	defer p.conn.SetDeadline(time.Time{})
 
 	for downloaded < piece.Length {
-		if !peer.choked {
+		if !p.choked {
 			// pipeline the requests
 			for inQueue < maxRequests && start < piece.Length {
 				// request the next piece
@@ -188,14 +188,14 @@ func (peer *Peer) downloadPiece(piece *Piece) ([]byte, error) {
 				}
 				start += length
 				request := messaging.Request(piece.Index, beg, length)
-				_, err := peer.conn.Write(request)
+				_, err := p.conn.Write(request)
 				if err != nil {
 					return nil, err
 				}
 				inQueue++
 			}
 		}
-		chunk, err := peer.read()
+		chunk, err := p.read()
 		if err != nil {
 			return nil, err
 		}
@@ -207,7 +207,7 @@ func (peer *Peer) downloadPiece(piece *Piece) ([]byte, error) {
 			// if the chunk is too long, return an error
 			if chunk.Begin+len(chunk.Value) > piece.Length {
 				return nil,
-					fmt.Errorf("Received a chunk too long: bound %d for piece of size %d",
+					fmt.Errorf("received a chunk too long: bound %d for piece of size %d",
 						chunk.Begin+len(chunk.Value), piece.Length)
 			}
 			downloaded += copy(res[chunk.Begin:], chunk.Value)
@@ -221,13 +221,19 @@ func (peer *Peer) downloadPiece(piece *Piece) ([]byte, error) {
 func Download(handshake []byte, address string, pieces chan *Piece, results chan *Result) {
 	peer, err := new(handshake, address)
 	if err != nil {
-		log.Printf("Could not connect to peer at %s\n", address)
+		log.Printf("Could not connect to peer at %s", address)
 		return
 	}
-	log.Printf("Connected to peer at %s\n", address)
+	log.Printf("Connected to peer at %s", address)
 	defer peer.conn.Close()
-	peer.unchoke()
-	peer.interested()
+	err = peer.unchoke()
+	if err != nil {
+		log.Printf("Disconnecting from peer at %s: %s", address, err.Error())
+	}
+	err = peer.interested()
+	if err != nil {
+		log.Printf("Disconnecting from peer at %s: %s", address, err.Error())
+	}
 
 	for piece := range pieces {
 		// check if this peer has that piece; put it back if not
@@ -238,7 +244,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 
 		res, err := peer.downloadPiece(piece)
 		if err != nil {
-			log.Printf("Could not download piece %d: %s\n", piece.Index, err.Error())
+			log.Printf("Disconnecting from peer at %s: could not download piece %d: %s", address, piece.Index, err.Error())
 			pieces <- piece
 			return
 		}

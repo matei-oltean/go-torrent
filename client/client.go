@@ -75,7 +75,7 @@ func (client *Client) downloadPieces() ([]byte, error) {
 	handshake := messaging.GenerateHandshake(client.File.Hash, client.ID)
 
 	// Create workers to download the pieces
-	for _, peerAddress := range client.PeerAddr.PeersAddresses {
+	for _, peerAddress := range client.PeerAddr.Peers6Addresses {
 		go peer.Download(handshake, peerAddress, pieces, results)
 	}
 
@@ -85,7 +85,7 @@ func (client *Client) downloadPieces() ([]byte, error) {
 		result := <-results
 		copy(file[result.Index*pieceLen:], result.Value)
 		done++
-		log.Printf("Downloaded %d/%d pieces (%.2f%%)\n", done, numPieces, float64(done)/float64(numPieces)*100)
+		log.Printf("Downloaded %d/%d pieces (%.2f%%)", done, numPieces, float64(done)/float64(numPieces)*100)
 	}
 
 	return file, nil
@@ -112,6 +112,6 @@ func (client *Client) Download(path string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Successfully saved file at %s\n", outPath)
+	log.Printf("Successfully saved file at %s", outPath)
 	return nil
 }
