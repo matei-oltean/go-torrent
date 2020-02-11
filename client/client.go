@@ -11,55 +11,36 @@ import (
 	"github.com/matei-oltean/go-torrent/utils"
 )
 
-// Client represents a client that wants to download a single file
-type Client struct {
-	ID        [20]byte
-	File      *fileutils.TorrentFile
-	PeersAddr []string
-	folder    string
-}
-
-// New gets a new client from a torrent path
-func New(torrentPath string) (*Client, error) {
-	// save the folder to know where to save the file
-	folder := filepath.Dir(torrentPath)
-	torrentFile, err := fileutils.OpenTorrent(torrentPath)
-	if err != nil {
-		return nil, err
-	}
-	id := utils.ClientID()
-	trackerURL := ""
+// getPeers returns the list of peers from a torrent file and client ID
+func getPeers(torrentFile *fileutils.TorrentFile, clientID [20]byte) ([]string, error) {
 	var response *fileutils.TrackerResponse
+	var err error
 	// Try ports from 6881 till 6889 in accordance with the specifications
 	for port := 6881; port < 6890 && response == nil; port++ {
-		trackerURL, err = torrentFile.GetAnnounceURL(id, port)
+		trackerURL, err := torrentFile.GetAnnounceURL(clientID, port)
 		if err != nil {
 			return nil, err
 		}
 		response, err = fileutils.GetTrackerResponse(trackerURL)
+		if err == nil {
+			return response.PeersAddresses, nil
+		}
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &Client{
-		ID:        id,
-		File:      torrentFile,
-		PeersAddr: response.PeersAddresses,
-		folder:    folder,
-	}, nil
+	return nil, err
 }
 
 // downloadPieces retrieves the file as a byte array
-func (client *Client) downloadPieces() ([]byte, error) {
-	fileLen := client.File.Length
-	pieceLen := client.File.PieceLength
-	numPieces := len(client.File.Pieces)
+// from torrent file, a list of peers and a client ID
+func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clientID [20]byte) ([]byte, error) {
+	fileLen := torrentFile.Length
+	pieceLen := torrentFile.PieceLength
+	numPieces := len(torrentFile.Pieces)
 	file := make([]byte, fileLen)
 	// Create chan of pieces to download
 	pieces := make(chan *peer.Piece, fileLen)
 	// Create chan of results to collect
 	results := make(chan *peer.Result)
-	for i, hash := range client.File.Pieces {
+	for i, hash := range torrentFile.Pieces {
 		length := pieceLen
 		// The last piece is shorter
 		if i == numPieces-1 && fileLen%pieceLen != 0 {
@@ -72,10 +53,10 @@ func (client *Client) downloadPieces() ([]byte, error) {
 		}
 	}
 
-	handshake := messaging.GenerateHandshake(client.File.Hash, client.ID)
+	handshake := messaging.GenerateHandshake(torrentFile.Hash, clientID)
 
 	// Create workers to download the pieces
-	for _, peerAddress := range client.PeersAddr {
+	for _, peerAddress := range peersAddr {
 		go peer.Download(handshake, peerAddress, pieces, results)
 	}
 
@@ -94,17 +75,26 @@ func (client *Client) downloadPieces() ([]byte, error) {
 // Download retrieves the file and saves it to the specified path
 // if the path is empty, saves it to the folder of the torrent file
 // with the default name coming from the torrent file
-func (client *Client) Download(path string) error {
-	outPath := path
+func Download(torrentPath, outputPath string) error {
+	id := utils.ClientID()
+	torrentFile, err := fileutils.OpenTorrent(torrentPath)
+	if err != nil {
+		return err
+	}
+	outPath := outputPath
 	if outPath == "" {
-		outPath = filepath.Join(client.folder, client.File.Name)
+		outPath = filepath.Join(filepath.Dir(torrentPath), torrentFile.Name)
 	}
 	outFile, err := os.Create(outPath)
 	if err != nil {
 		return err
 	}
 	defer outFile.Close()
-	file, err := client.downloadPieces()
+	peers, err := getPeers(torrentFile, id)
+	if err != nil {
+		return err
+	}
+	file, err := downloadPieces(torrentFile, peers, id)
 	if err != nil {
 		return err
 	}

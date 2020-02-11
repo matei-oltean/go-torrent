@@ -27,10 +27,9 @@ func main() {
 		return
 	}
 
-	client, err := client.New(torrentPath)
+	err := client.Download(torrentPath, outPath)
 	if err != nil {
 		println(err.Error())
 		return
 	}
-	client.Download(outPath)
 }
