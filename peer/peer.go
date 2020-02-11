@@ -83,9 +83,6 @@ func new(handshake []byte, address string) (*peer, error) {
 		return nil, fmt.Errorf("expected handshake with metadata\n%v got\n%v instead", handshake[startLen+8:startLen+28], received[startLen+8:startLen+28])
 	}
 
-	peerID := [20]byte{}
-	copy(peerID[:], received[len(received)-20:])
-
 	// next we should receive a bitfield message
 	bitfield, err := messaging.ReadBitfield(conn)
 	if err != nil {
@@ -100,17 +97,15 @@ func new(handshake []byte, address string) (*peer, error) {
 	}, nil
 }
 
-// unchoke sends an unchoke message
-func (p *peer) unchoke() error {
+// startConn sends an unchoke message followed by an interested
+func (p *peer) startConn() error {
 	unchokeMsg := messaging.Unchoke()
 	_, err := p.conn.Write(unchokeMsg)
-	return err
-}
-
-// interested sends an interested message
-func (p *peer) interested() error {
+	if err != nil {
+		return err
+	}
 	interestedMsg := messaging.Interested()
-	_, err := p.conn.Write(interestedMsg)
+	_, err = p.conn.Write(interestedMsg)
 	return err
 }
 
@@ -148,21 +143,11 @@ func (p *peer) read() (*chunk, error) {
 		if len(msg.Payload) != 4 {
 			return nil, fmt.Errorf("expected payload length 4 got %d instead", len(msg.Payload))
 		}
-		p.set(int(binary.BigEndian.Uint32(msg.Payload)))
+		p.bitfield.Set(int(binary.BigEndian.Uint32(msg.Payload)))
 	case messaging.MPiece:
 		return parsePiece(msg.Payload)
 	}
 	return nil, nil
-}
-
-// has return whether the peer has a certain piece
-func (p *peer) has(index int) bool {
-	return p.bitfield.Get(index)
-}
-
-// set signifies that a peer has a new piece
-func (p *peer) set(index int) {
-	p.bitfield.Set(index)
 }
 
 // downloadPiece attempts to download a piece from the peer
@@ -226,18 +211,14 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 	}
 	log.Printf("Connected to peer at %s", address)
 	defer peer.conn.Close()
-	err = peer.unchoke()
-	if err != nil {
-		log.Printf("Disconnecting from peer at %s: %s", address, err.Error())
-	}
-	err = peer.interested()
+	err = peer.startConn()
 	if err != nil {
 		log.Printf("Disconnecting from peer at %s: %s", address, err.Error())
 	}
 
 	for piece := range pieces {
 		// check if this peer has that piece; put it back if not
-		if !peer.has(piece.Index) {
+		if !peer.bitfield.Get(piece.Index) {
 			pieces <- piece
 			continue
 		}
@@ -252,8 +233,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 		// check for the piece integrity
 		hash := sha1.Sum(res)
 		if !bytes.Equal(hash[:], piece.Hash[:]) {
-			log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead",
-				piece.Index, piece.Hash, hash)
+			log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead", piece.Index, piece.Hash, hash)
 			pieces <- piece
 			continue
 		}
