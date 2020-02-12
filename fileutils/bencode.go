@@ -15,7 +15,7 @@ type Bencode struct {
 	Dict map[string]Bencode
 	List []Bencode
 	Str  string
-	Int  int64
+	Int  int
 	Hash [20]byte
 }
 
@@ -86,7 +86,7 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 		if err != nil {
 			return nil, err
 		}
-		ben.Int = integer
+		ben.Int = int(integer)
 		return ben, nil
 	case 'l':
 		list := make([]Bencode, 5)
