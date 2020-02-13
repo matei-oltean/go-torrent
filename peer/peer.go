@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/matei-oltean/go-torrent/messaging"
-	"github.com/matei-oltean/go-torrent/utils"
 )
 
 // chunkSize is the max length that can be downloaded at once
@@ -44,7 +43,7 @@ type Result struct {
 // peer represents a connection to a peer
 type peer struct {
 	conn     net.Conn
-	bitfield utils.Bitfield
+	bitfield bitfield
 	choked   bool
 }
 
@@ -143,7 +142,7 @@ func (p *peer) read() (*chunk, error) {
 		if len(msg.Payload) != 4 {
 			return nil, fmt.Errorf("expected payload length 4 got %d instead", len(msg.Payload))
 		}
-		p.bitfield.Set(int(binary.BigEndian.Uint32(msg.Payload)))
+		p.bitfield.set(int(binary.BigEndian.Uint32(msg.Payload)))
 	case messaging.MPiece:
 		return parsePiece(msg.Payload)
 	}
@@ -203,7 +202,7 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 }
 
 // Download creates a new peer that downloads pieces from a file
-func Download(handshake []byte, address string, pieces chan *Piece, results chan *Result) {
+func Download(handshake []byte, address string, pieces chan *Piece, results chan<- *Result) {
 	peer, err := new(handshake, address)
 	if err != nil {
 		log.Printf("Could not connect to peer at %s", address)
@@ -218,7 +217,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 
 	for piece := range pieces {
 		// check if this peer has that piece; put it back if not
-		if !peer.bitfield.Get(piece.Index) {
+		if !peer.bitfield.get(piece.Index) {
 			pieces <- piece
 			continue
 		}

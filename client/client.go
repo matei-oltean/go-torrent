@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/rand"
 	"log"
 	"os"
 	"path/filepath"
@@ -8,8 +9,14 @@ import (
 	"github.com/matei-oltean/go-torrent/fileutils"
 	"github.com/matei-oltean/go-torrent/messaging"
 	"github.com/matei-oltean/go-torrent/peer"
-	"github.com/matei-oltean/go-torrent/utils"
 )
+
+// clientID returns the id -GT0000- followed by 12 random bytes
+func clientID() [20]byte {
+	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '0', '-'}
+	rand.Read(id[8:])
+	return id
+}
 
 // getPeers returns the list of peers from a torrent file and client ID
 func getPeers(torrentFile *fileutils.TorrentFile, clientID [20]byte) ([]string, error) {
@@ -76,7 +83,7 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 // if the path is empty, saves it to the folder of the torrent file
 // with the default name coming from the torrent file
 func Download(torrentPath, outputPath string) error {
-	id := utils.ClientID()
+	id := clientID()
 	torrentFile, err := fileutils.OpenTorrent(torrentPath)
 	if err != nil {
 		return err

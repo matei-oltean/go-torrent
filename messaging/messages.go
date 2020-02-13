@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-
-	"github.com/matei-oltean/go-torrent/utils"
 )
 
 // MessageType represent the different types of peer messages
@@ -77,7 +75,7 @@ func Read(reader io.Reader) (*Message, error) {
 
 // ReadBitfield reads a Message and returns its bitfield
 // If the Message is not a bitfield Message, returns an error
-func ReadBitfield(reader io.Reader) (utils.Bitfield, error) {
+func ReadBitfield(reader io.Reader) ([]byte, error) {
 	msg, err := Read(reader)
 	if err != nil {
 		return nil, err
