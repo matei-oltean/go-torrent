@@ -36,7 +36,7 @@ func parsePeerList(peers string, ipv6 bool) ([]string, error) {
 	return peerList, nil
 }
 
-func prettyTrackerBencode(ben *Bencode) (*TrackerResponse, error) {
+func prettyTrackerBencode(ben *bencode) (*TrackerResponse, error) {
 	dic := ben.Dict
 	if dic == nil {
 		return nil, errors.New("Tracker response has no dictionary")

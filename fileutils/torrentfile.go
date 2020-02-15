@@ -10,16 +10,24 @@ import (
 	"strconv"
 )
 
+// SubFile represents a subfile in the case of multi file torrents
+type SubFile struct {
+	Length int
+	Path   []string
+}
+
 // TorrentFile represents a flattened torrent file
 type TorrentFile struct {
 	Announce    string
 	Hash        [20]byte
 	Length      int
+	Files       []SubFile
 	Name        string
 	PieceLength int
 	Pieces      [][20]byte
 }
 
+// splitPieces splits the concatenated hashes of the files into a list of hashes
 func splitPieces(pieces string) ([][20]byte, error) {
 	buff := []byte(pieces)
 	if len(buff)%20 != 0 {
@@ -32,7 +40,39 @@ func splitPieces(pieces string) ([][20]byte, error) {
 	return hashes, nil
 }
 
-func prettyTorrentBencode(ben *Bencode) (*TorrentFile, error) {
+// parseFiles parses the files into a slice of subFile
+func parseFiles(files []bencode) ([]SubFile, error) {
+	res := make([]SubFile, len(files))
+	for i, file := range files {
+		dic := file.Dict
+		if dic == nil {
+			return nil, fmt.Errorf("file %d has no dictionary", i)
+		}
+		length, ok := dic["length"]
+		if !ok {
+			return nil, fmt.Errorf("file %d missing key length", i)
+		}
+		if length.Int <= 0 {
+			return nil, fmt.Errorf("file %d has a negative value for length: %d", i, length.Int)
+		}
+
+		path, ok := dic["path"]
+		if !ok || path.List == nil || len(path.List) == 0 {
+			return nil, fmt.Errorf("file %d missing key path", i)
+		}
+		paths := make([]string, len(path.List))
+		for i, p := range path.List {
+			paths[i] = p.Str
+		}
+		res[i] = SubFile{
+			Length: length.Int,
+			Path:   paths,
+		}
+	}
+	return res, nil
+}
+
+func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 	dic := ben.Dict
 	if dic == nil {
 		return nil, errors.New("Torrent file has no dictionary")
@@ -52,15 +92,37 @@ func prettyTorrentBencode(ben *Bencode) (*TorrentFile, error) {
 		}
 	}
 
-	for _, key := range [2]string{"piece length", "length"} {
-		elem, ok := dict[key]
-		if !ok {
-			return nil, fmt.Errorf("Info dictionary missing key %s", key)
+	pieceLen, ok := dict["piece length"]
+	if !ok {
+		return nil, errors.New("Info dictionary missing key piece length")
+	}
+	if pieceLen.Int <= 0 {
+		return nil, fmt.Errorf("Negative value for piece length: %d", pieceLen.Int)
+	}
+
+	finalLen := 0
+	name := ""
+	var subFiles []SubFile
+	// in case of single file, there is a length key
+	length, ok := dict["length"]
+	if ok {
+		if length.Int < 0 {
+			return nil, fmt.Errorf("Negative value for length: %d", length.Int)
 		}
-		if elem.Int < 0 {
-			return nil, fmt.Errorf("Negative value for %s: %d", key, elem.Int)
+		finalLen = length.Int
+		name = dict["name"].Str
+	} else {
+		files, ok := dict["files"]
+		if !ok || files.List == nil || len(files.List) == 0 {
+			return nil, errors.New("Info dictionary missing keys length and files")
+		}
+		parsedFiles, err := parseFiles(files.List)
+		subFiles = parsedFiles
+		if err != nil {
+			return nil, err
 		}
 	}
+
 	pieces, err := splitPieces(dict["pieces"].Str)
 	if err != nil {
 		return nil, err
@@ -68,9 +130,10 @@ func prettyTorrentBencode(ben *Bencode) (*TorrentFile, error) {
 	return &TorrentFile{
 		Announce:    announce.Str,
 		Hash:        ben.Hash,
-		Length:      dict["length"].Int,
-		Name:        dict["name"].Str,
-		PieceLength: dict["piece length"].Int,
+		Length:      finalLen,
+		Files:       subFiles,
+		Name:        name,
+		PieceLength: pieceLen.Int,
 		Pieces:      pieces,
 	}, nil
 }
