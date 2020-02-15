@@ -10,10 +10,10 @@ import (
 	"strconv"
 )
 
-// Bencode represents a generic bencoded file
-type Bencode struct {
-	Dict map[string]Bencode
-	List []Bencode
+// bencode represents a generic bencoded file
+type bencode struct {
+	Dict map[string]bencode
+	List []bencode
 	Str  string
 	Int  int
 	Hash [20]byte
@@ -22,8 +22,8 @@ type Bencode struct {
 // decode decodes a bencode file to a bencode object
 // buff represents the 'info' table from the torrent file
 // infoMap indicates bytes are to be appendended to buff
-func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, error) {
-	ben := &Bencode{}
+func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*bencode, error) {
+	ben := &bencode{}
 	char, err := reader.ReadByte()
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 	}
 	switch char {
 	case 'd':
-		dict := make(map[string]Bencode)
+		dict := make(map[string]bencode)
 		for {
 			ch, err := reader.ReadByte()
 			if err != nil {
@@ -89,7 +89,7 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 		ben.Int = int(integer)
 		return ben, nil
 	case 'l':
-		var list []Bencode
+		var list []bencode
 		for {
 			ch, err := reader.ReadByte()
 			if err != nil {
@@ -139,7 +139,7 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 	}
 }
 
-func (ben Bencode) String() string {
+func (ben bencode) String() string {
 	if ben.Str != "" {
 		return ben.Str
 	}

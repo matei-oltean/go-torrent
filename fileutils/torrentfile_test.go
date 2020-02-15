@@ -13,10 +13,40 @@ const write bool = false
 
 const testFolder string = "testData"
 const torrentFile string = "debian-10.2.0-amd64-netinst.iso.torrent"
-const referenceFile string = torrentFile + ".reference.json"
-const referenceURL string = "announceURL"
+
+func TestOpenTorrentMultipleFiles(t *testing.T) {
+	const multipleTorrentFile string = "multiplefiles.torrent"
+	const referenceFile string = multipleTorrentFile + ".reference.json"
+	torrent, err := OpenTorrent(filepath.Join(testFolder, multipleTorrentFile))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	referencePath := filepath.Join(testFolder, referenceFile)
+	if write {
+		serialised, _ := json.Marshal(torrent)
+		ioutil.WriteFile(referencePath, serialised, 0644)
+	}
+
+	expected := &TorrentFile{}
+	reference, err := ioutil.ReadFile(referencePath)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	err = json.Unmarshal(reference, &expected)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if !reflect.DeepEqual(torrent, expected) {
+		t.Error("Parsed torrentfile is not equal to the reference.")
+	}
+}
 
 func TestOpenTorrent(t *testing.T) {
+	const referenceFile string = torrentFile + ".reference.json"
 	torrent, err := OpenTorrent(filepath.Join(testFolder, torrentFile))
 	if err != nil {
 		t.Error(err)
@@ -46,6 +76,7 @@ func TestOpenTorrent(t *testing.T) {
 }
 
 func TestAnnounceURL(t *testing.T) {
+	const referenceURL string = "announceURL"
 	torrent, err := OpenTorrent(filepath.Join(testFolder, torrentFile))
 	if err != nil {
 		t.Error(err)
