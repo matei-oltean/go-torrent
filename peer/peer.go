@@ -161,33 +161,31 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 	defer p.conn.SetDeadline(time.Time{})
 
 	for downloaded < piece.Length {
-		if !p.choked {
-			// pipeline the requests
-			for inQueue < maxRequests && start < piece.Length {
-				// request the next piece
-				beg := start
-				length := chunkSize
-				if beg+length > piece.Length {
-					length = piece.Length - start
-				}
-				start += length
-				request := messaging.Request(piece.Index, beg, length)
-				_, err := p.conn.Write(request)
-				if err != nil {
-					return nil, err
-				}
-				inQueue++
+		for ; !p.choked && inQueue < maxRequests && start < piece.Length; inQueue++ {
+			// request the next piece
+			length := chunkSize
+			if start+length > piece.Length {
+				length = piece.Length - start
 			}
+			request := messaging.Request(piece.Index, start, length)
+			_, err := p.conn.Write(request)
+			if err != nil {
+				return nil, err
+			}
+			start += length
 		}
-		chunk, err := p.read()
-		if err != nil {
-			return nil, err
-		}
-		if chunk != nil {
-			// if the chunk has the wrong index, discard it
-			if chunk.Index != piece.Index {
+		// we want to read all the buffered messages
+		// and at least one in case we are waiting for unchoking
+		for ok := true; ok; ok = inQueue > 0 {
+			chunk, err := p.read()
+			if err != nil {
+				return nil, err
+			}
+			// if it is not a chunk or if the chunk has the wrong index, continue
+			if chunk == nil || chunk.Index != piece.Index {
 				continue
 			}
+
 			// if the chunk is too long, return an error
 			if chunk.Begin+len(chunk.Value) > piece.Length {
 				return nil,
@@ -213,6 +211,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 	err = peer.startConn()
 	if err != nil {
 		log.Printf("Disconnecting from peer at %s: %s", address, err.Error())
+		return
 	}
 
 	for piece := range pieces {
