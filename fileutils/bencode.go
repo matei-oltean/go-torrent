@@ -89,7 +89,7 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 		ben.Int = int(integer)
 		return ben, nil
 	case 'l':
-		list := make([]Bencode, 5)
+		var list []Bencode
 		for {
 			ch, err := reader.ReadByte()
 			if err != nil {
@@ -129,7 +129,7 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*Bencode, e
 			return nil, err
 		}
 		if n != int(length) {
-			return nil, errors.New("String of the wrong length")
+			return nil, errors.New("string of the wrong length")
 		}
 		if infoMap {
 			buff.Write(buf)
@@ -152,5 +152,5 @@ func (ben Bencode) String() string {
 	if ben.Dict != nil {
 		return fmt.Sprintf("%+v", ben.Dict)
 	}
-	return fmt.Sprintf("%+v", ben.Hash)
+	return "nil"
 }
