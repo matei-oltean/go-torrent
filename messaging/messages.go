@@ -61,16 +61,11 @@ func readMessage(reader io.Reader) (*Message, error) {
 // it reads and parses messages from the connection
 // until an non keepalive Message is received
 // which is then returned
-func Read(reader io.Reader) (*Message, error) {
-	var msg *Message = nil
-	var err error = nil
+func Read(reader io.Reader) (msg *Message, err error) {
 	for msg == nil && err == nil {
 		msg, err = readMessage(reader)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return msg, nil
+	return
 }
 
 // ReadBitfield reads a Message and returns its bitfield

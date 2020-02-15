@@ -45,7 +45,7 @@ func TestOpenTorrent(t *testing.T) {
 	}
 }
 
-func TestGetAnnounceURL(t *testing.T) {
+func TestAnnounceURL(t *testing.T) {
 	torrent, err := OpenTorrent(filepath.Join(testFolder, torrentFile))
 	if err != nil {
 		t.Error(err)
@@ -53,7 +53,7 @@ func TestGetAnnounceURL(t *testing.T) {
 	}
 	port := 6882
 	id := [20]byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
-	url, _ := torrent.GetAnnounceURL(id, port)
+	url, _ := torrent.AnnounceURL(id, port)
 
 	referencePath := filepath.Join(testFolder, referenceURL)
 	expectedURL, _ := ioutil.ReadFile(referencePath)

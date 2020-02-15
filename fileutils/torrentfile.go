@@ -89,8 +89,8 @@ func OpenTorrent(path string) (*TorrentFile, error) {
 	return prettyTorrentBencode(bencode)
 }
 
-// GetAnnounceURL builds the url to call the announcer from a peer id and a port number
-func (t *TorrentFile) GetAnnounceURL(id [20]byte, port int) (string, error) {
+// AnnounceURL builds the url to call the announcer from a peer id and a port number
+func (t *TorrentFile) AnnounceURL(id [20]byte, port int) (string, error) {
 	announceURL, err := url.Parse(t.Announce)
 	if err != nil {
 		return "", err

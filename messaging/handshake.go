@@ -7,8 +7,8 @@ const Protocol string = "BitTorrent protocol"
 // length of protocol + protocol + extensions + metadata + id
 const HandshakeSize int = 1 + len(Protocol) + 8 + 20 + 20
 
-// GenerateHandshake generates the handshake message
-func GenerateHandshake(metadataHash, id [20]byte) []byte {
+// Handshake returns the handshake message
+func Handshake(metadataHash, id [20]byte) []byte {
 	protocolLen := len(Protocol)
 	res := make([]byte, HandshakeSize)
 	// format is:

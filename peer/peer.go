@@ -163,6 +163,7 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 	for downloaded < piece.Length {
 		for ; !p.choked && inQueue < maxRequests && start < piece.Length; inQueue++ {
 			// request the next piece
+			// last piece might be shorter
 			length := chunkSize
 			if start+length > piece.Length {
 				length = piece.Length - start

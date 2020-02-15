@@ -24,7 +24,7 @@ func getPeers(torrentFile *fileutils.TorrentFile, clientID [20]byte) ([]string, 
 	var err error
 	// Try ports from 6881 till 6889 in accordance with the specifications
 	for port := 6881; port < 6890 && response == nil; port++ {
-		trackerURL, err := torrentFile.GetAnnounceURL(clientID, port)
+		trackerURL, err := torrentFile.AnnounceURL(clientID, port)
 		if err != nil {
 			return nil, err
 		}
@@ -49,7 +49,7 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 	results := make(chan *peer.Result)
 	for i, hash := range torrentFile.Pieces {
 		length := pieceLen
-		// The last piece is shorter
+		// The last piece might be shorter
 		if i == numPieces-1 && fileLen%pieceLen != 0 {
 			i = fileLen % pieceLen
 		}
@@ -60,7 +60,7 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 		}
 	}
 
-	handshake := messaging.GenerateHandshake(torrentFile.Hash, clientID)
+	handshake := messaging.Handshake(torrentFile.Hash, clientID)
 
 	// Create workers to download the pieces
 	for _, peerAddress := range peersAddr {
