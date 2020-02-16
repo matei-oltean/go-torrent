@@ -421,3 +421,8 @@ func (t *TorrentFile) getPeersUDP(clientID [20]byte) ([]string, error) {
 	}
 	return nil, errors.New("timed out after 8 retries")
 }
+
+// Multi returns true if there are multiple files
+func (t *TorrentFile) Multi() bool {
+	return len(t.Files) > 1
+}
