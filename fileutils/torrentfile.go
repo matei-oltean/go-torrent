@@ -41,89 +41,99 @@ func splitPieces(pieces string) ([][20]byte, error) {
 }
 
 // parseFiles parses the files into a slice of subFile
-func parseFiles(files []bencode) ([]SubFile, error) {
+// also returns the total file length
+func parseFiles(files []bencode) ([]SubFile, int, error) {
 	res := make([]SubFile, len(files))
+	totalLen := 0
 	for i, file := range files {
 		dic := file.Dict
 		if dic == nil {
-			return nil, fmt.Errorf("file %d has no dictionary", i)
+			return nil, 0, fmt.Errorf("file %d has no dictionary", i)
 		}
 		length, ok := dic["length"]
 		if !ok {
-			return nil, fmt.Errorf("file %d missing key length", i)
+			return nil, 0, fmt.Errorf("file %d missing key length", i)
 		}
 		if length.Int <= 0 {
-			return nil, fmt.Errorf("file %d has a negative value for length: %d", i, length.Int)
+			return nil, 0, fmt.Errorf("file %d has a negative value for length: %d", i, length.Int)
 		}
 
 		path, ok := dic["path"]
 		if !ok || path.List == nil || len(path.List) == 0 {
-			return nil, fmt.Errorf("file %d missing key path", i)
+			return nil, 0, fmt.Errorf("file %d missing key path", i)
 		}
 		paths := make([]string, len(path.List))
 		for i, p := range path.List {
 			paths[i] = p.Str
 		}
+		totalLen += length.Int
 		res[i] = SubFile{
 			Length: length.Int,
 			Path:   paths,
 		}
 	}
-	return res, nil
+	return res, totalLen, nil
 }
 
 func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 	dic := ben.Dict
 	if dic == nil {
-		return nil, errors.New("Torrent file has no dictionary")
+		return nil, errors.New("torrent file has no dictionary")
 	}
 	announce, ok := dic["announce"]
 	if !ok || announce.Str == "" {
-		return nil, errors.New("Torrent file missing announce key")
+		return nil, errors.New("torrent file missing announce key")
 	}
 	info, ok := dic["info"]
 	if !ok || info.Dict == nil {
-		return nil, errors.New("Torrent file missing info key")
+		return nil, errors.New("torrent file missing info key")
 	}
 	dict := info.Dict
-	for _, key := range [2]string{"name", "pieces"} {
-		if elem, ok := dict[key]; !ok || elem.Str == "" {
-			return nil, fmt.Errorf("Info dictionary missing key %s", key)
-		}
+	piece, ok := dict["pieces"]
+	if !ok || piece.Str == "" {
+		return nil, errors.New("info dictionary missing key pieces")
+	}
+
+	name, ok := dict["name"]
+	if !ok || name.Str == "" {
+		return nil, errors.New("info dictionary missing key name")
 	}
 
 	pieceLen, ok := dict["piece length"]
 	if !ok {
-		return nil, errors.New("Info dictionary missing key piece length")
+		return nil, errors.New("info dictionary missing key piece length")
 	}
 	if pieceLen.Int <= 0 {
-		return nil, fmt.Errorf("Negative value for piece length: %d", pieceLen.Int)
+		return nil, fmt.Errorf("negative value for piece length: %d", pieceLen.Int)
 	}
 
 	finalLen := 0
-	name := ""
+	var err error
 	var subFiles []SubFile
 	// in case of single file, there is a length key
 	length, ok := dict["length"]
 	if ok {
 		if length.Int < 0 {
-			return nil, fmt.Errorf("Negative value for length: %d", length.Int)
+			return nil, fmt.Errorf("negative value for length: %d", length.Int)
 		}
 		finalLen = length.Int
-		name = dict["name"].Str
+		file := SubFile{
+			Length: finalLen,
+			Path:   []string{name.Str},
+		}
+		subFiles = append(subFiles, file)
 	} else {
 		files, ok := dict["files"]
 		if !ok || files.List == nil || len(files.List) == 0 {
-			return nil, errors.New("Info dictionary missing keys length and files")
+			return nil, errors.New("info dictionary missing keys length and files")
 		}
-		parsedFiles, err := parseFiles(files.List)
-		subFiles = parsedFiles
+		subFiles, finalLen, err = parseFiles(files.List)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	pieces, err := splitPieces(dict["pieces"].Str)
+	pieces, err := splitPieces(piece.Str)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +142,7 @@ func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 		Hash:        ben.Hash,
 		Length:      finalLen,
 		Files:       subFiles,
-		Name:        name,
+		Name:        name.Str,
 		PieceLength: pieceLen.Int,
 		Pieces:      pieces,
 	}, nil
