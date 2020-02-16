@@ -11,29 +11,11 @@ import (
 	"github.com/matei-oltean/go-torrent/peer"
 )
 
-// clientID returns the id -GT0000- followed by 12 random bytes
+// clientID returns '-', the id 'GT' followed by the version number, '-' and 12 random bytes
 func clientID() [20]byte {
-	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '0', '-'}
+	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '1', '-'}
 	rand.Read(id[8:])
 	return id
-}
-
-// getPeers returns the list of peers from a torrent file and client ID
-func getPeers(torrentFile *fileutils.TorrentFile, clientID [20]byte) ([]string, error) {
-	var response *fileutils.TrackerResponse
-	var err error
-	// Try ports from 6881 till 6889 in accordance with the specifications
-	for port := 6881; port < 6890 && response == nil; port++ {
-		trackerURL, err := torrentFile.AnnounceURL(clientID, port)
-		if err != nil {
-			return nil, err
-		}
-		response, err = fileutils.GetTrackerResponse(trackerURL)
-		if err == nil {
-			return response.PeersAddresses, nil
-		}
-	}
-	return nil, err
 }
 
 // downloadPieces retrieves the file as a byte array
@@ -84,24 +66,25 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 // with the default name coming from the torrent file
 func Download(torrentPath, outputPath string) error {
 	id := clientID()
-	torrentFile, err := fileutils.OpenTorrent(torrentPath)
+	t, err := fileutils.OpenTorrent(torrentPath)
 	if err != nil {
 		return err
 	}
 	outPath := outputPath
 	if outPath == "" {
-		outPath = filepath.Join(filepath.Dir(torrentPath), torrentFile.Name)
+		outPath = filepath.Join(filepath.Dir(torrentPath), t.Name)
 	}
 	outFile, err := os.Create(outPath)
 	if err != nil {
 		return err
 	}
 	defer outFile.Close()
-	peers, err := getPeers(torrentFile, id)
+	peers, err := t.GetPeers(id)
 	if err != nil {
 		return err
 	}
-	file, err := downloadPieces(torrentFile, peers, id)
+	log.Printf("Received %d peers from tracker", len(peers))
+	file, err := downloadPieces(t, peers, id)
 	if err != nil {
 		return err
 	}
