@@ -1,7 +1,7 @@
 package messaging
 
 import (
-	"reflect"
+	"bytes"
 	"testing"
 )
 
@@ -16,7 +16,7 @@ func TestHandshake(t *testing.T) {
 				'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'},
 			metadata[:]...),
 		id[:]...)
-	if !reflect.DeepEqual(handshake, expected) {
+	if !bytes.Equal(handshake, expected) {
 		t.Errorf("Expected handshake\n%v but got\n%v instead", expected, handshake)
 	}
 }
