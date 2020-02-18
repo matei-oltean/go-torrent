@@ -22,6 +22,12 @@ const (
 	aError
 )
 
+// udpConn is a simple struct with a connection and its scheme
+type udpConn struct {
+	Conn   *net.UDPConn
+	Scheme string
+}
+
 // SubFile represents a subfile in the case of multi file torrents
 type SubFile struct {
 	Length int
@@ -30,13 +36,35 @@ type SubFile struct {
 
 // TorrentFile represents a flattened torrent file
 type TorrentFile struct {
-	Announce    string
+	Announce    []*url.URL
 	Hash        [20]byte
 	Length      int
 	Files       []SubFile
 	Name        string
 	PieceLength int
 	Pieces      [][20]byte
+}
+
+// parseAnnounceList parses and flattens the announce list
+// it should be a list of lists of urls (as strings)
+func parseAnnounceList(l []bencode) []*url.URL {
+	q := []*url.URL{}
+	for _, subL := range l {
+		if subL.List == nil || len(subL.List) == 0 {
+			continue
+		}
+		for _, u := range subL.List {
+			if u.Str == "" {
+				continue
+			}
+			parsedU, err := url.Parse(u.Str)
+			if err != nil {
+				continue
+			}
+			q = append(q, parsedU)
+		}
+	}
+	return q
 }
 
 // splitPieces splits the concatenated hashes of the files into a list of hashes
@@ -96,6 +124,19 @@ func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 	if !ok || announce.Str == "" {
 		return nil, errors.New("torrent file missing announce key")
 	}
+	u, err := url.Parse(announce.Str)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse announce: %s", err.Error())
+	}
+	ann := []*url.URL{u}
+	annList, ok := dic["announce-list"]
+	if ok && annList.List != nil {
+		urls := parseAnnounceList(annList.List)
+		if len(urls) > 0 {
+			ann = urls
+		}
+	}
+
 	info, ok := dic["info"]
 	if !ok || info.Dict == nil {
 		return nil, errors.New("torrent file missing info key")
@@ -120,7 +161,6 @@ func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 	}
 
 	finalLen := 0
-	var err error
 	var subFiles []SubFile
 	// in case of single file, there is a length key
 	length, ok := dict["length"]
@@ -150,7 +190,7 @@ func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 		return nil, err
 	}
 	return &TorrentFile{
-		Announce:    announce.Str,
+		Announce:    ann,
 		Hash:        ben.Hash,
 		Length:      finalLen,
 		Files:       subFiles,
@@ -191,18 +231,17 @@ func (t *TorrentFile) announceURL(id [20]byte, u *url.URL, port int) string {
 
 // GetPeers returns the list of peers from a torrent file and client ID
 func (t *TorrentFile) GetPeers(clientID [20]byte) ([]string, error) {
-	url, err := url.Parse(t.Announce)
-	if err != nil {
-		return nil, err
+	for _, u := range t.Announce {
+		switch u.Scheme {
+		case "http", "https":
+			return t.getPeersHTTPS(clientID, u)
+		case "udp", "udp4", "udp6":
+			return t.getPeersUDP(clientID)
+		default:
+			continue
+		}
 	}
-	switch url.Scheme {
-	case "http", "https":
-		return t.getPeersHTTPS(clientID, url)
-	case "udp", "udp4", "udp6":
-		return t.getPeersUDP(clientID, url)
-	default:
-		return nil, fmt.Errorf("unknown scheme %s", url.Scheme)
-	}
+	return nil, errors.New("none of the trackers urls could be parsed")
 }
 
 // getPeersHTTPS returns the list of peers using https from a torrent file and client ID
@@ -335,28 +374,50 @@ func (t *TorrentFile) getPeerFromConnectionID(clientID [20]byte, conn *net.UDPCo
 
 // getPeersUDP returns the list of peers using udp from a torrent file and client ID
 // see http://www.bittorrent.org/beps/bep_0015.html for more detail
-func (t *TorrentFile) getPeersUDP(clientID [20]byte, url *url.URL) ([]string, error) {
-	addr, err := net.ResolveUDPAddr("udp", url.Host)
-	if err != nil {
-		return nil, err
+func (t *TorrentFile) getPeersUDP(clientID [20]byte) ([]string, error) {
+	i := 0
+	conns := make([]udpConn, len(t.Announce))
+	for _, u := range t.Announce {
+		if u.Scheme != "udp" && u.Scheme != "udp4" && u.Scheme != "udp6" {
+			continue
+		}
+		addr, err := net.ResolveUDPAddr(u.Scheme, u.Host)
+		if err != nil {
+			continue
+		}
+		conn, err := net.DialUDP(u.Scheme, nil, addr)
+		if err != nil {
+			continue
+		}
+		defer conn.Close()
+		conns[i] = udpConn{conn, u.Scheme}
+		i++
 	}
-	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		return nil, err
+	conns = conns[:i]
+
+	// shuffle the list of peers
+	for j := range conns {
+		k := rand.Intn(j + 1)
+		conns[j], conns[k] = conns[k], conns[j]
 	}
-	defer conn.Close()
 	// since we are using udp, retry 8 times with an increasing deadline
 	for try := 0; try < 8; try++ {
-		conn.SetDeadline(time.Now().Add(15 * (1 << try) * time.Second))
-		connID, err := connectToUDP(conn)
-		if err != nil {
-			// continue on a timeout
-			if err, ok := err.(net.Error); ok && err.Timeout() {
+		l := len(conns)
+		for k := 0; k < l; k++ {
+			uConn := conns[0]
+			conn := uConn.Conn
+			conns = conns[1:]
+			conn.SetDeadline(time.Now().Add(15 * (1 << try) * time.Second))
+			connID, err := connectToUDP(conn)
+			if err != nil {
+				// continue on a timeout
+				if err, ok := err.(net.Error); ok && err.Timeout() {
+					conns = append(conns, uConn)
+				}
 				continue
 			}
-			return nil, err
+			return t.getPeerFromConnectionID(clientID, conn, connID, uConn.Scheme == "udp6")
 		}
-		return t.getPeerFromConnectionID(clientID, conn, connID, url.Scheme == "udp6")
 	}
 	return nil, errors.New("timed out after 8 retries")
 }

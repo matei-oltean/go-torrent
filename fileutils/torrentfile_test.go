@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
-	"net/url"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -28,7 +27,7 @@ func TestOpenTorrentMultipleFiles(t *testing.T) {
 
 	referencePath := filepath.Join(testFolder, referenceFile)
 	if write {
-		serialised, _ := json.Marshal(torrent)
+		serialised, _ := json.MarshalIndent(torrent, "", " ")
 		ioutil.WriteFile(referencePath, serialised, 0644)
 	}
 
@@ -58,7 +57,7 @@ func TestOpenTorrent(t *testing.T) {
 
 	referencePath := filepath.Join(testFolder, referenceFile)
 	if write {
-		serialised, _ := json.Marshal(torrent)
+		serialised, _ := json.MarshalIndent(torrent, "", " ")
 		ioutil.WriteFile(referencePath, serialised, 0644)
 	}
 
@@ -87,11 +86,7 @@ func TestAnnounceURL(t *testing.T) {
 	}
 	port := 6882
 	id := [20]byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
-	url, err := url.Parse(torrent.Announce)
-	if err != nil {
-		t.Error(err)
-	}
-	announceURL := torrent.announceURL(id, url, port)
+	announceURL := torrent.announceURL(id, torrent.Announce[0], port)
 
 	referencePath := filepath.Join(testFolder, referenceURL)
 	expectedURL, _ := ioutil.ReadFile(referencePath)

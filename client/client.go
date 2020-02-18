@@ -13,7 +13,7 @@ import (
 
 // clientID returns '-', the id 'GT' followed by the version number, '-' and 12 random bytes
 func clientID() [20]byte {
-	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '1', '-'}
+	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '2', '-'}
 	rand.Read(id[8:])
 	return id
 }
