@@ -33,7 +33,7 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 		length := pieceLen
 		// The last piece might be shorter
 		if i == numPieces-1 && fileLen%pieceLen != 0 {
-			i = fileLen % pieceLen
+			length = fileLen % pieceLen
 		}
 		pieces <- &peer.Piece{
 			Index:  i,
