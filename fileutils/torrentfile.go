@@ -251,7 +251,7 @@ func (t *TorrentFile) getPeersHTTPS(clientID [20]byte, url *url.URL) ([]string, 
 	// Try ports from 6881 till 6889 in accordance with the specifications
 	for port := 6881; port < 6890 && res == nil; port++ {
 		trackerURL := t.announceURL(clientID, url, port)
-		res, err = GetTrackerResponse(trackerURL)
+		res, err = getTrackerResponse(trackerURL)
 		if err == nil {
 			return res.PeersAddresses, nil
 		}

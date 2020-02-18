@@ -73,27 +73,23 @@ func prettyTrackerBencode(ben *bencode) (*TrackerResponse, error) {
 	}, nil
 }
 
-// GetTrackerResponse performs the get announce call
-func GetTrackerResponse(announceURL string) (*TrackerResponse, error) {
-	response, err := http.Get(announceURL)
+// getTrackerResponse performs the get announce call
+func getTrackerResponse(announceURL string) (*TrackerResponse, error) {
+	res, err := http.Get(announceURL)
 	if err != nil {
 		return nil, err
 	}
 
-	defer response.Body.Close()
+	defer res.Body.Close()
 
-	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("Received a non 200 code from the tracker: %s", response.Status)
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("Received a non 200 code from the tracker: %s", res.Status)
 	}
 
-	bencode, err := decode(bufio.NewReader(response.Body), new(bytes.Buffer), false)
+	bencode, err := decode(bufio.NewReader(res.Body), new(bytes.Buffer), false)
 	if err != nil {
 		return nil, err
 	}
 
-	parsedResponse, err := prettyTrackerBencode(bencode)
-	if err != nil {
-		return nil, err
-	}
-	return parsedResponse, nil
+	return prettyTrackerBencode(bencode)
 }

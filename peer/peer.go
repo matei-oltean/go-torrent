@@ -168,8 +168,8 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 			if start+length > piece.Length {
 				length = piece.Length - start
 			}
-			request := messaging.Request(piece.Index, start, length)
-			_, err := p.conn.Write(request)
+			req := messaging.Request(piece.Index, start, length)
+			_, err := p.conn.Write(req)
 			if err != nil {
 				return nil, err
 			}
