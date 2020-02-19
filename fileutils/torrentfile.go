@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -30,8 +31,9 @@ type udpConn struct {
 
 // SubFile represents a subfile in the case of multi file torrents
 type SubFile struct {
-	Length int
-	Path   []string
+	CumStart int    // start of the file
+	Length   int    // length of the file
+	Path     string // path to the file
 }
 
 // TorrentFile represents a flattened torrent file
@@ -102,15 +104,16 @@ func parseFiles(files []bencode) ([]SubFile, int, error) {
 		if !ok || path.List == nil || len(path.List) == 0 {
 			return nil, 0, fmt.Errorf("file %d missing key path", i)
 		}
-		paths := make([]string, len(path.List))
-		for i, p := range path.List {
-			paths[i] = p.Str
+		paths := ""
+		for _, p := range path.List {
+			paths = filepath.Join(paths, p.Str)
+		}
+		res[i] = SubFile{
+			CumStart: totalLen,
+			Length:   length.Int,
+			Path:     paths,
 		}
 		totalLen += length.Int
-		res[i] = SubFile{
-			Length: length.Int,
-			Path:   paths,
-		}
 	}
 	return res, totalLen, nil
 }
@@ -171,7 +174,7 @@ func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 		finalLen = length.Int
 		file := SubFile{
 			Length: finalLen,
-			Path:   []string{name.Str},
+			Path:   name.Str,
 		}
 		subFiles = append(subFiles, file)
 	} else {

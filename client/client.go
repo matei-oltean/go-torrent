@@ -11,9 +11,15 @@ import (
 	"github.com/matei-oltean/go-torrent/peer"
 )
 
+// fileDescriptor is a file writer plus the remaining bytes to be writtent
+type fileDescriptor struct {
+	FileWriter *os.File
+	Remaining  int
+}
+
 // clientID returns '-', the id 'GT' followed by the version number, '-' and 12 random bytes
 func clientID() [20]byte {
-	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '3', '-'}
+	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '4', '-'}
 	rand.Read(id[8:])
 	return id
 }
@@ -25,11 +31,40 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 	fileLen := torrentFile.Length
 	pieceLen := torrentFile.PieceLength
 	numPieces := len(torrentFile.Pieces)
-	files := make([]byte, fileLen)
+	files := torrentFile.Files
+	numFiles := len(files)
+	// pieceToFile maps a piece index to the indices of the files it corresponds to
+	pieceToFile := make(map[int][]int, numPieces)
+	// fReaders maps a file index to its file reader
+	fReaders := make(map[int]*fileDescriptor, numFiles)
+	defer func() {
+		for _, val := range fReaders {
+			val.FileWriter.Close()
+		}
+	}()
+	for i, f := range torrentFile.Files {
+		path := filepath.Join(outDir, f.Path)
+		os.MkdirAll(filepath.Dir(path), os.ModePerm)
+		fd, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		_, err = fd.Seek(int64(f.Length-1), 0)
+		if err != nil {
+			return err
+		}
+		_, err = fd.Write([]byte{0})
+		if err != nil {
+			return err
+		}
+		fReaders[i] = &fileDescriptor{fd, f.Length}
+	}
 	// Create chan of pieces to download
 	pieces := make(chan *peer.Piece, fileLen)
 	// Create chan of results to collect
 	results := make(chan *peer.Result)
+	pos := 0
+	fileIndex := 0
 	for i, hash := range torrentFile.Pieces {
 		length := pieceLen
 		// The last piece might be shorter
@@ -41,6 +76,13 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 			Hash:   hash,
 			Length: length,
 		}
+		pos += length
+		var f []int
+		for ; fileIndex < numFiles && files[fileIndex].CumStart+files[fileIndex].Length < pos; fileIndex++ {
+			f = append(f, fileIndex)
+		}
+		f = append(f, fileIndex)
+		pieceToFile[i] = f
 	}
 
 	handshake := messaging.Handshake(torrentFile.Hash, clientID)
@@ -51,32 +93,38 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 	}
 
 	// Parse the results as they come and copy them to file
-	done := 0
-	for done < numPieces {
+	for done := 1; done <= numPieces; done++ {
 		result := <-results
-		copy(files[result.Index*pieceLen:], result.Value)
-		done++
-		log.Printf("Downloaded %d/%d pieces (%.2f%%)", done, numPieces, float64(done)/float64(numPieces)*100)
-	}
-	start := 0
-	for _, file := range torrentFile.Files {
-		outPath := outDir
-		for _, dir := range file.Path {
-			outPath = filepath.Join(outPath, dir)
+		// write to the associated files
+		for _, i := range pieceToFile[result.Index] {
+			f := files[i]
+			pieceStart := result.Index * pieceLen
+			// start writing in the file at fileOffset
+			// start reading the result at resOffset
+			resOffset, fileOffset := 0, pieceStart-f.CumStart
+			if fileOffset < 0 {
+				resOffset, fileOffset = -fileOffset, 0
+			}
+			// write the result till end
+			end := len(result.Value)
+			if end+pieceStart > f.CumStart+f.Length {
+				end = f.CumStart + f.Length - pieceStart
+			}
+			fd := fReaders[i]
+			n, err := fd.FileWriter.WriteAt(result.Value[resOffset:end], int64(fileOffset))
+			if err != nil {
+				return err
+			}
+			fd.Remaining -= n
+			if fd.Remaining == 0 {
+				fd.FileWriter.Close()
+				delete(fReaders, i)
+				log.Print("Finished downloading", filepath.Base(f.Path))
+			}
 		}
-		os.MkdirAll(filepath.Dir(outPath), os.ModePerm)
-		outFile, err := os.Create(outPath)
-		if err != nil {
-			return err
+		if done%10 == 0 {
+			log.Printf("Downloaded %d/%d pieces (%.2f%%)", done, numPieces, float64(done)/float64(numPieces)*100)
 		}
-		defer outFile.Close()
-		_, err = outFile.Write(files[start : start+file.Length])
-		start += file.Length
-		if err != nil {
-			return err
-		}
-		log.Printf("Successfully saved file at %s", outPath)
-
 	}
 	return nil
 }

@@ -114,22 +114,19 @@
  "Length": 276445467,
  "Files": [
   {
+   "CumStart": 0,
    "Length": 140,
-   "Path": [
-    "Big Buck Bunny.en.srt"
-   ]
+   "Path": "Big Buck Bunny.en.srt"
   },
   {
+   "CumStart": 140,
    "Length": 276134947,
-   "Path": [
-    "Big Buck Bunny.mp4"
-   ]
+   "Path": "Big Buck Bunny.mp4"
   },
   {
+   "CumStart": 276135087,
    "Length": 310380,
-   "Path": [
-    "poster.jpg"
-   ]
+   "Path": "poster.jpg"
   }
  ],
  "Name": "Big Buck Bunny",
