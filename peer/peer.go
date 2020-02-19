@@ -157,7 +157,7 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 	res := make([]byte, piece.Length)
 
 	// Add a deadline so that we do not wait for stuck peers
-	p.conn.SetDeadline(time.Now().Add(15 * time.Second))
+	p.conn.SetDeadline(time.Now().Add(20 * time.Second))
 	defer p.conn.SetDeadline(time.Time{})
 
 	for downloaded < piece.Length {
@@ -204,16 +204,16 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 func Download(handshake []byte, address string, pieces chan *Piece, results chan<- *Result) {
 	peer, err := new(handshake, address)
 	if err != nil {
-		log.Printf("Could not connect to peer at %s", address)
+		log.Printf("Could not connect to peer at %s: %s", address, err)
 		return
 	}
-	log.Printf("Connected to peer at %s", address)
 	defer peer.conn.Close()
 	err = peer.startConn()
 	if err != nil {
-		log.Printf("Disconnecting from peer at %s: %s", address, err.Error())
+		log.Printf("Could not connect to peer at %s: %s", address, err)
 		return
 	}
+	log.Print("Connected to peer at", address)
 
 	for piece := range pieces {
 		// check if this peer has that piece; put it back if not
@@ -224,7 +224,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 
 		res, err := peer.downloadPiece(piece)
 		if err != nil {
-			log.Printf("Disconnecting from peer at %s: could not download piece %d: %s", address, piece.Index, err.Error())
+			log.Printf("Disconnecting from peer at %s: %s", address, err)
 			pieces <- piece
 			return
 		}

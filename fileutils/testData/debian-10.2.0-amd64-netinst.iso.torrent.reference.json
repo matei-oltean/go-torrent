@@ -37,10 +37,9 @@
  "Length": 351272960,
  "Files": [
   {
+   "CumStart": 0,
    "Length": 351272960,
-   "Path": [
-    "debian-10.2.0-amd64-netinst.iso"
-   ]
+   "Path": "debian-10.2.0-amd64-netinst.iso"
   }
  ],
  "Name": "debian-10.2.0-amd64-netinst.iso",
