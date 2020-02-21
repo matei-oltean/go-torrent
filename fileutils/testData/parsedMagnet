@@ -1,0 +1,116 @@
+{
+ "Hash": [
+  221,
+  130,
+  85,
+  236,
+  220,
+  124,
+  165,
+  95,
+  176,
+  187,
+  248,
+  19,
+  35,
+  216,
+  112,
+  98,
+  219,
+  31,
+  109,
+  28
+ ],
+ "Name": "Big Buck Bunny",
+ "TrackersURL": [
+  {
+   "Scheme": "udp",
+   "Opaque": "",
+   "User": null,
+   "Host": "explodie.org:6969",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  },
+  {
+   "Scheme": "udp",
+   "Opaque": "",
+   "User": null,
+   "Host": "tracker.coppersurfer.tk:6969",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  },
+  {
+   "Scheme": "udp",
+   "Opaque": "",
+   "User": null,
+   "Host": "tracker.empire-js.us:1337",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  },
+  {
+   "Scheme": "udp",
+   "Opaque": "",
+   "User": null,
+   "Host": "tracker.leechers-paradise.org:6969",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  },
+  {
+   "Scheme": "udp",
+   "Opaque": "",
+   "User": null,
+   "Host": "tracker.opentrackr.org:1337",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  },
+  {
+   "Scheme": "wss",
+   "Opaque": "",
+   "User": null,
+   "Host": "tracker.btorrent.xyz",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  },
+  {
+   "Scheme": "wss",
+   "Opaque": "",
+   "User": null,
+   "Host": "tracker.fastcast.nz",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  },
+  {
+   "Scheme": "wss",
+   "Opaque": "",
+   "User": null,
+   "Host": "tracker.openwebtorrent.com",
+   "Path": "",
+   "RawPath": "",
+   "ForceQuery": false,
+   "RawQuery": "",
+   "Fragment": ""
+  }
+ ],
+ "PeerAddresses": null
+}
