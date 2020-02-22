@@ -27,11 +27,11 @@ func clientID() [20]byte {
 // downloadPieces retrieves the file as a byte array
 // from torrent file, a list of peers and a client ID
 // and writes them to the file system
-func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clientID [20]byte, outDir string) error {
-	fileLen := torrentFile.Length
-	pieceLen := torrentFile.PieceLength
-	numPieces := len(torrentFile.Pieces)
-	files := torrentFile.Files
+func downloadPieces(inf *fileutils.Info, peersAddr []string, clientID [20]byte, outDir string) error {
+	fileLen := inf.Length
+	pieceLen := inf.PieceLength
+	numPieces := len(inf.Pieces)
+	files := inf.Files
 	numFiles := len(files)
 	// pieceToFile maps a piece index to the indices of the files it corresponds to
 	pieceToFile := make(map[int][]int, numPieces)
@@ -42,7 +42,7 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 			val.FileWriter.Close()
 		}
 	}()
-	for i, f := range torrentFile.Files {
+	for i, f := range inf.Files {
 		path := filepath.Join(outDir, f.Path)
 		os.MkdirAll(filepath.Dir(path), os.ModePerm)
 		fd, err := os.Create(path)
@@ -65,7 +65,7 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 	results := make(chan *peer.Result)
 	pos := 0
 	fileIndex := 0
-	for i, hash := range torrentFile.Pieces {
+	for i, hash := range inf.Pieces {
 		length := pieceLen
 		// The last piece might be shorter
 		if i == numPieces-1 && fileLen%pieceLen != 0 {
@@ -85,7 +85,7 @@ func downloadPieces(torrentFile *fileutils.TorrentFile, peersAddr []string, clie
 		pieceToFile[i] = f
 	}
 
-	handshake := messaging.Handshake(torrentFile.Hash, clientID)
+	handshake := messaging.Handshake(inf.Hash, clientID)
 
 	// Create workers to download the pieces
 	for _, peerAddress := range peersAddr {
@@ -143,8 +143,8 @@ func Download(torrentPath, outputPath string) error {
 		outDir = filepath.Dir(torrentPath)
 	}
 	// If there are multiple files, create a containing folder
-	if t.Multi() {
-		outDir = filepath.Join(outDir, t.Name)
+	if t.Info.Multi() {
+		outDir = filepath.Join(outDir, t.Info.Name)
 		os.MkdirAll(outDir, os.ModePerm)
 	}
 	peers, err := t.GetPeers(id)
@@ -152,7 +152,7 @@ func Download(torrentPath, outputPath string) error {
 		return err
 	}
 	log.Printf("Received %d peers from tracker", len(peers))
-	err = downloadPieces(t, peers, id, outDir)
+	err = downloadPieces(t.Info, peers, id, outDir)
 	if err != nil {
 		return err
 	}
