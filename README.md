@@ -10,7 +10,6 @@ To use:
 
 Next steps:
 * Clean up the code (package separation, add tests, etc.)
-* Add support for multi file torrents
 * Add support for magnet links
 * Add support for seeding
 * Add a GUI
