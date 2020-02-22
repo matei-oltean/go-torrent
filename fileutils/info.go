@@ -27,7 +27,7 @@ func (inf *Info) Multi() bool {
 }
 
 // getPeersHTTPS returns the list of peers using https from an info dictionary and client ID
-func (inf *Info) getPeersHTTPS(clientID [20]byte, url *url.URL) ([]string, error) {
+func (inf *Info) getPeersHTTPS(clientID [20]byte, url *url.URL) (*TrackerResponse, error) {
 	var res *TrackerResponse
 	var err error
 	// Try ports from 6881 till 6889 in accordance with the specifications
@@ -35,7 +35,7 @@ func (inf *Info) getPeersHTTPS(clientID [20]byte, url *url.URL) ([]string, error
 		trackerURL := inf.announceURL(clientID, url, port)
 		res, err = getTrackerResponse(trackerURL)
 		if err == nil {
-			return res.PeersAddresses, nil
+			return res, nil
 		}
 	}
 	return nil, err
@@ -58,7 +58,7 @@ func (inf *Info) announceURL(id [20]byte, u *url.URL, port int) string {
 
 // getPeerFromConnectionID gets the list of UDP peers from a connection id
 // ipv6 is true for an ipv6 connection
-func (inf *Info) getPeerFromConnectionID(clientID [20]byte, conn *net.UDPConn, connID uint64, ipv6 bool) ([]string, error) {
+func (inf *Info) getPeerFromConnectionID(clientID [20]byte, conn *net.UDPConn, connID uint64, ipv6 bool) (*TrackerResponse, error) {
 	transactionID := rand.Uint32() // random id
 
 	buf := new(bytes.Buffer)
@@ -110,6 +110,8 @@ func (inf *Info) getPeerFromConnectionID(clientID [20]byte, conn *net.UDPConn, c
 		return nil, errors.New("received a different transaction_id")
 	}
 
+	interval := int(binary.BigEndian.Uint32(res[8:]))
+
 	peers := res[20:]
 	ipSize := net.IPv4len
 	if ipv6 {
@@ -128,5 +130,5 @@ func (inf *Info) getPeerFromConnectionID(clientID [20]byte, conn *net.UDPConn, c
 		peerList[i/peerSize] = net.JoinHostPort(ip.String(), strconv.Itoa(port))
 	}
 	peerList = peerList[:i/peerSize]
-	return peerList, nil
+	return &TrackerResponse{interval, peerList}, nil
 }

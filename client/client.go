@@ -151,8 +151,8 @@ func Download(torrentPath, outputPath string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Received %d peers from tracker", len(peers))
-	err = downloadPieces(t.Info, peers, id, outDir)
+	log.Printf("Received %d peers from tracker", len(peers.PeersAddresses))
+	err = downloadPieces(t.Info, peers.PeersAddresses, id, outDir)
 	if err != nil {
 		return err
 	}

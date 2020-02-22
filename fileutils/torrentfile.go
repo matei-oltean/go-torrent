@@ -213,7 +213,7 @@ func OpenTorrent(path string) (*TorrentFile, error) {
 }
 
 // GetPeers returns the list of peers from a torrent file and client ID
-func (t *TorrentFile) GetPeers(clientID [20]byte) ([]string, error) {
+func (t *TorrentFile) GetPeers(clientID [20]byte) (*TrackerResponse, error) {
 	for _, u := range t.Announce {
 		switch u.Scheme {
 		case "http", "https":
@@ -267,7 +267,7 @@ func connectToUDP(conn *net.UDPConn) (uint64, error) {
 
 // getPeersUDP returns the list of peers using udp from a torrent file and client ID
 // see http://www.bittorrent.org/beps/bep_0015.html for more detail
-func (t *TorrentFile) getPeersUDP(clientID [20]byte) ([]string, error) {
+func (t *TorrentFile) getPeersUDP(clientID [20]byte) (*TrackerResponse, error) {
 	i := 0
 	conns := make([]udpConn, len(t.Announce))
 	for _, u := range t.Announce {
