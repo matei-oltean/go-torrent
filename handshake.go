@@ -16,7 +16,13 @@ func Handshake(metadataHash, id [20]byte) []byte {
 	res[0] = byte(protocolLen)
 	// protocol
 	copy(res[1:], Protocol)
-	// 8 bytes for implemented extensions; will be left blank
+
+	// 8 bytes for implemented extensions
+	extensions := make([]byte, 8)
+	// support extensions
+	extensions[5] = 0x10
+	copy(res[1+protocolLen:], extensions)
+
 	// 20 bytes for the the hash of the metadata of the torrent
 	copy(res[1+protocolLen+8:], metadataHash[:])
 	// 20 bytes for the client id

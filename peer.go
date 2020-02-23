@@ -11,16 +11,25 @@ import (
 )
 
 // chunkSize is the max length that can be downloaded at once
+// it is also the size of the payload for a metadata message
 const chunkSize int = 1 << 14
 
 // maxRequests is the max number of requests that can be queued up at once
 const maxRequests int = 5
 
+type chunkType int
+
+const (
+	cFile chunkType = iota // a piece of the file
+	cInfo                  // a piece of the info dictionary
+)
+
 // chunk of a piece
 type chunk struct {
-	Index int
-	Begin int
-	Value []byte
+	chunkType chunkType // indicates the type of chunk
+	index     int
+	begin     int
+	value     []byte
 }
 
 // Piece represents a piece to be downloaded:
@@ -40,9 +49,11 @@ type Result struct {
 
 // peer represents a connection to a peer
 type peer struct {
-	conn     net.Conn
-	bitfield bitfield
-	choked   bool
+	conn         net.Conn
+	bitfield     bitfield
+	choked       bool
+	extensions   map[string]uint8
+	metadataSize int
 }
 
 // newPeer creates a new peer from a handshake and a peer address
@@ -80,6 +91,26 @@ func newPeer(handshake []byte, address string) (*peer, error) {
 		return nil, fmt.Errorf("expected handshake with metadata\n%v got\n%v instead", handshake[startLen+8:startLen+28], received[startLen+8:startLen+28])
 	}
 
+	// check for extensions
+	var ext map[string]uint8
+	size := 0
+	extensions := received[startLen : startLen+8]
+	if extensions[5]&0x10 != 0 {
+		payload, err := ReadExtensions(conn)
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		msgType := payload[0]
+		if msgType == 0 { // handshake
+			ext, size, err = ParseExtensionsHandshake(payload[1:])
+			if err != nil {
+				conn.Close()
+				return nil, err
+			}
+		}
+	}
+
 	// next we should receive a bitfield message
 	bitfield, err := ReadBitfield(conn)
 	if err != nil {
@@ -88,16 +119,24 @@ func newPeer(handshake []byte, address string) (*peer, error) {
 	}
 
 	return &peer{
-		conn:     conn,
-		bitfield: bitfield,
-		choked:   true,
+		conn:         conn,
+		bitfield:     bitfield,
+		choked:       true,
+		extensions:   ext,
+		metadataSize: size,
 	}, nil
+}
+
+// unchoke sends a unchoke message
+func (p *peer) unchoke() error {
+	unchokeMsg := Unchoke()
+	_, err := p.conn.Write(unchokeMsg)
+	return err
 }
 
 // startConn sends an unchoke message followed by an interested
 func (p *peer) startConn() error {
-	unchokeMsg := Unchoke()
-	_, err := p.conn.Write(unchokeMsg)
+	err := p.unchoke()
 	if err != nil {
 		return err
 	}
@@ -112,15 +151,37 @@ func parsePiece(payload []byte) (*chunk, error) {
 	// index of the message (4 byte big endian)
 	// beginning of the chunk (4 byte big endian)
 	// payload
-	if len(payload) < 0 {
+	if len(payload) < 8 {
 		return nil, fmt.Errorf("expected message of length at least 8 got %d instead", len(payload))
 	}
 	index := binary.BigEndian.Uint32(payload[:4])
 	begin := binary.BigEndian.Uint32(payload[4:8])
 	return &chunk{
-		Index: int(index),
-		Begin: int(begin),
-		Value: payload[8:],
+		chunkType: cFile,
+		index:     int(index),
+		begin:     int(begin),
+		value:     payload[8:],
+	}, nil
+}
+
+// parseExtended parse an extended message as a chunk
+func (p *peer) parseExtended(payload []byte) (*chunk, error) {
+	// an extended message has the following format:
+	// uint8 extended message id
+	// bencoded dictionary
+	// piece data (16 KiB unless it is the last piece)
+	if len(payload) < 1 {
+		return nil, fmt.Errorf("expected message of length at least 1 got %d instead", len(payload))
+	}
+	parsed, index, err := ParseExtensionsMetadata(payload[1:])
+	if err != nil || parsed == nil {
+		return nil, err
+	}
+	return &chunk{
+		chunkType: cInfo,
+		index:     index,
+		begin:     index * chunkSize,
+		value:     parsed,
 	}, nil
 }
 
@@ -134,6 +195,7 @@ func (p *peer) read() (*chunk, error) {
 	switch msg.Type {
 	case MChoke:
 		p.choked = true
+		p.unchoke()
 	case MUnchoke:
 		p.choked = false
 	case MHave:
@@ -143,17 +205,20 @@ func (p *peer) read() (*chunk, error) {
 		p.bitfield.set(int(binary.BigEndian.Uint32(msg.Payload)))
 	case MPiece:
 		return parsePiece(msg.Payload)
+	case MExtended:
+		return p.parseExtended(msg.Payload)
 	}
 	return nil, nil
 }
 
 // downloadPiece attempts to download a piece from the peer
-func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
+// info is true if we want to download the metadata instead of the file
+func (p *peer) downloadPiece(piece *Piece, info bool) ([]byte, error) {
 	downloaded := 0
 	start := 0
 	inQueue := 0
 	res := make([]byte, piece.Length)
-
+	i := 0
 	// Add a deadline so that we do not wait for stuck peers
 	p.conn.SetDeadline(time.Now().Add(20 * time.Second))
 	defer p.conn.SetDeadline(time.Time{})
@@ -166,12 +231,18 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 			if start+length > piece.Length {
 				length = piece.Length - start
 			}
-			req := Request(piece.Index, start, length)
+			var req []byte
+			if info {
+				req = RequestMetaData(p.extensions["ut_metadata"], i)
+			} else {
+				req = RequestPiece(piece.Index, start, length)
+			}
 			_, err := p.conn.Write(req)
 			if err != nil {
 				return nil, err
 			}
 			start += length
+			i++
 		}
 		// we want to read all the buffered messages
 		// and at least one in case we are waiting for unchoking
@@ -181,17 +252,20 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 				return nil, err
 			}
 			// if it is not a chunk or if the chunk has the wrong index, continue
-			if chunk == nil || chunk.Index != piece.Index {
+			if chunk == nil {
 				continue
 			}
-
+			if (info && chunk.chunkType != cInfo) ||
+				(!info && (chunk.chunkType != cFile || chunk.index != piece.Index)) {
+				continue
+			}
 			// if the chunk is too long, return an error
-			if chunk.Begin+len(chunk.Value) > piece.Length {
+			if chunk.begin+len(chunk.value) > piece.Length {
 				return nil,
 					fmt.Errorf("received a chunk too long: bound %d for piece of size %d",
-						chunk.Begin+len(chunk.Value), piece.Length)
+						chunk.begin+len(chunk.value), piece.Length)
 			}
-			downloaded += copy(res[chunk.Begin:], chunk.Value)
+			downloaded += copy(res[chunk.begin:], chunk.value)
 			inQueue--
 		}
 	}
@@ -199,7 +273,8 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 }
 
 // DownloadPieces creates a new peer that downloads pieces from a file
-func DownloadPieces(handshake []byte, address string, pieces chan *Piece, results chan<- *Result) {
+func DownloadPieces(hash, clientID [20]byte, address string, pieces chan *Piece, info chan<- *TorrentInfo, results chan<- *Result) {
+	handshake := Handshake(hash, clientID)
 	peer, err := newPeer(handshake, address)
 	if err != nil {
 		log.Printf("Could not connect to peer at %s: %s", address, err)
@@ -211,31 +286,59 @@ func DownloadPieces(handshake []byte, address string, pieces chan *Piece, result
 		log.Printf("Could not connect to peer at %s: %s", address, err)
 		return
 	}
-	log.Print("Connected to peer at", address)
+	log.Printf("Connected to peer at %s", address)
 
-	for piece := range pieces {
-		// check if this peer has that piece; put it back if not
-		if !peer.bitfield.get(piece.Index) {
-			pieces <- piece
-			continue
+	// if there are pieces, download them
+	// if not, we should download the info file
+	needsInfo := true
+	for {
+		select {
+		case piece := <-pieces:
+			needsInfo = false // there must already been an info file provided
+			// check if this peer has that piece; put it back if not
+			if !peer.bitfield.get(piece.Index) {
+				pieces <- piece
+				continue
+			}
+
+			res, err := peer.downloadPiece(piece, false)
+			if err != nil {
+				log.Printf("Disconnecting from peer at %s: %s", address, err)
+				pieces <- piece
+				return
+			}
+
+			// check for the piece integrity
+			h := sha1.Sum(res)
+			if !bytes.Equal(h[:], piece.Hash[:]) {
+				log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead", piece.Index, piece.Hash, hash)
+				pieces <- piece
+				continue
+			}
+
+			peer.conn.Write(Have(piece.Index))
+			results <- &Result{Index: piece.Index, Value: res}
+		default:
+			if !needsInfo {
+				return
+			}
+			// we must download the metadata
+			res, err := peer.downloadPiece(&Piece{Length: peer.metadataSize}, true)
+			if err != nil {
+				log.Printf("Disconnecting from peer at %s: %s", address, err)
+				return
+			}
+			h := sha1.Sum(res)
+			if !bytes.Equal(hash[:], h[:]) {
+				continue
+			}
+			inf, err := ParseInfo(res, hash)
+			if err != nil {
+				log.Printf("Disconnecting from peer at %s: %s", address, err)
+				return
+			}
+			needsInfo = false
+			info <- inf
 		}
-
-		res, err := peer.downloadPiece(piece)
-		if err != nil {
-			log.Printf("Disconnecting from peer at %s: %s", address, err)
-			pieces <- piece
-			return
-		}
-
-		// check for the piece integrity
-		hash := sha1.Sum(res)
-		if !bytes.Equal(hash[:], piece.Hash[:]) {
-			log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead", piece.Index, piece.Hash, hash)
-			pieces <- piece
-			continue
-		}
-
-		peer.conn.Write(Have(piece.Index))
-		results <- &Result{Index: piece.Index, Value: res}
 	}
 }

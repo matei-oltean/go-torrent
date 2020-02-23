@@ -81,11 +81,12 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 		pieceToFile[i] = f
 	}
 
-	handshake := Handshake(inf.Hash, clientID)
+	// create chan to receive the torrent metadata in case we need it
+	info := make(chan *TorrentInfo)
 
 	// Create workers to download the pieces
 	for _, peerAddress := range peersAddr {
-		go DownloadPieces(handshake, peerAddress, pieces, results)
+		go DownloadPieces(inf.Hash, clientID, peerAddress, pieces, info, results)
 	}
 
 	// Parse the results as they come and copy them to file
