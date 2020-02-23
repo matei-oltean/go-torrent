@@ -20,6 +20,7 @@ const (
 	MRequest
 	MPiece
 	MCancel
+	MExtended MessageType = 20
 )
 
 // Message represents a Message: its type and payload
@@ -42,7 +43,7 @@ func ReadMessage(reader io.Reader) (*Message, error) {
 		if _, err := io.ReadFull(reader, binLength); err != nil {
 			return nil, err
 		}
-		msgLen := binary.BigEndian.Uint32(binLength)
+		msgLen := int(binary.BigEndian.Uint32(binLength))
 		// a msgLen of zero means it is a keepalive Message
 		if msgLen == 0 {
 			continue
@@ -59,8 +60,8 @@ func ReadMessage(reader io.Reader) (*Message, error) {
 	}
 }
 
-// ReadBitfield reads a Message and returns its bitfield
-// If the Message is not a bitfield Message, returns an error
+// ReadBitfield reads a message and returns its bitfield
+// If the message is not a bitfield message, returns an error
 func ReadBitfield(reader io.Reader) ([]byte, error) {
 	msg, err := ReadMessage(reader)
 	if err != nil {
@@ -68,6 +69,20 @@ func ReadBitfield(reader io.Reader) ([]byte, error) {
 	}
 	if msg.Type != MBitfield {
 		return nil, fmt.Errorf("expected a bitfield got a message of type %d instead", msg.Type)
+	}
+	return msg.Payload, nil
+}
+
+// ReadExtensions reads an extension message
+// returns its payload (1 byte for message type, the rest is the message)
+// If the message is not an extension message, returns an error
+func ReadExtensions(reader io.Reader) ([]byte, error) {
+	msg, err := ReadMessage(reader)
+	if err != nil {
+		return nil, err
+	}
+	if msg.Type != MExtended {
+		return nil, fmt.Errorf("expected an extended message got a message of type %d instead", msg.Type)
 	}
 	return msg.Payload, nil
 }
@@ -112,8 +127,8 @@ func Have(index int) []byte {
 	return msg.serialise()
 }
 
-// Request returns a request message for a chunk
-func Request(index, begin, length int) []byte {
+// RequestPiece returns a request message for a chunk
+func RequestPiece(index, begin, length int) []byte {
 	payload := make([]byte, 3*4)
 	binary.BigEndian.PutUint32(payload, uint32(index))
 	binary.BigEndian.PutUint32(payload[4:], uint32(begin))
@@ -123,4 +138,13 @@ func Request(index, begin, length int) []byte {
 		Payload: payload,
 	}
 	return msg.serialise()
+}
+
+// RequestMetaData requests a metadata piece for a certain index given the extension id
+func RequestMetaData(extID uint8, index int) []byte {
+	msg := []byte(fmt.Sprintf("d8:msg_typei0e5:piecei%dee", index))
+	msgBuf := make([]byte, 1+len(msg))
+	msgBuf[0] = extID
+	copy(msgBuf[1:], msg)
+	return (&Message{MExtended, msgBuf}).serialise()
 }

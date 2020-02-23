@@ -13,7 +13,7 @@ func TestHandshake(t *testing.T) {
 		append(
 			[]byte{'\x13',
 				'B', 'i', 't', 'T', 'o', 'r', 'r', 'e', 'n', 't', ' ', 'p', 'r', 'o', 't', 'o', 'c', 'o', 'l',
-				'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'},
+				'\x00', '\x00', '\x00', '\x00', '\x00', '\x10', '\x00', '\x00'},
 			metadata[:]...),
 		id[:]...)
 	if !bytes.Equal(handshake, expected) {
