@@ -61,6 +61,21 @@ func TestSetRandomised(t *testing.T) {
 	}
 }
 
+func TestEmptyBitfield(t *testing.T) {
+	var emptyBf []bitfield
+	emptyBf = append(emptyBf, nil) // nil case
+	var bf bitfield
+	emptyBf = append(emptyBf, bf) // zero value case
+
+	for _, bf := range emptyBf {
+		for i := -2; i < 3; i++ {
+			assertGet(t, false, bf, i)
+			bf.set(i)
+			bf.unset(i)
+		}
+	}
+}
+
 func assertGet(t *testing.T, expected bool, bitfield bitfield, index int) {
 	result := bitfield.get(index)
 	if expected != result {
