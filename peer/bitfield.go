@@ -3,7 +3,7 @@ package peer
 // bitfield represents a bitfield
 type bitfield []byte
 
-// set returns the value of the bitfield at a certain index
+// get returns the value of the bitfield at a certain index
 func (bf bitfield) get(index int) bool {
 	bucket := index / 8
 	if bucket >= len(bf) {
@@ -19,4 +19,13 @@ func (bf bitfield) set(index int) {
 		return
 	}
 	bf[bucket] |= 1 << (7 - index%8)
+}
+
+// unset sets bitfield value at a certain index to false
+func (bf bitfield) unset(index int) {
+	bucket := index / 8
+	if bucket >= len(bf) {
+		return
+	}
+	bf[bucket] &= ^(1 << (7 - index%8))
 }
