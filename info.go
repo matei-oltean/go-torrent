@@ -1,4 +1,4 @@
-package fileutils
+package main
 
 import (
 	"bytes"
@@ -11,8 +11,8 @@ import (
 	"strconv"
 )
 
-// Info represents the info dictionary for a torrent
-type Info struct {
+// TorrentInfo represents the info dictionary for a torrent
+type TorrentInfo struct {
 	Hash        [20]byte
 	Length      int
 	Files       []SubFile
@@ -22,12 +22,12 @@ type Info struct {
 }
 
 // Multi returns true if there are multiple files
-func (inf *Info) Multi() bool {
+func (inf *TorrentInfo) Multi() bool {
 	return len(inf.Files) > 1
 }
 
 // getPeersHTTPS returns the list of peers using https from an info dictionary and client ID
-func (inf *Info) getPeersHTTPS(clientID [20]byte, url *url.URL) (*TrackerResponse, error) {
+func (inf *TorrentInfo) getPeersHTTPS(clientID [20]byte, url *url.URL) (*TrackerResponse, error) {
 	var res *TrackerResponse
 	var err error
 	// Try ports from 6881 till 6889 in accordance with the specifications
@@ -42,7 +42,7 @@ func (inf *Info) getPeersHTTPS(clientID [20]byte, url *url.URL) (*TrackerRespons
 }
 
 // announceURL builds the url to call the announcer from a peer id and a port number
-func (inf *Info) announceURL(id [20]byte, u *url.URL, port int) string {
+func (inf *TorrentInfo) announceURL(id [20]byte, u *url.URL, port int) string {
 	param := url.Values{
 		"info_hash":  []string{string(inf.Hash[:])},
 		"peer_id":    []string{string(string(id[:]))},
@@ -58,7 +58,7 @@ func (inf *Info) announceURL(id [20]byte, u *url.URL, port int) string {
 
 // getPeerFromConnectionID gets the list of UDP peers from a connection id
 // ipv6 is true for an ipv6 connection
-func (inf *Info) getPeerFromConnectionID(clientID [20]byte, conn *net.UDPConn, connID uint64, ipv6 bool) (*TrackerResponse, error) {
+func (inf *TorrentInfo) getPeerFromConnectionID(clientID [20]byte, conn *net.UDPConn, connID uint64, ipv6 bool) (*TrackerResponse, error) {
 	transactionID := rand.Uint32() // random id
 
 	buf := new(bytes.Buffer)

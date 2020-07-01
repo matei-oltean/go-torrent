@@ -1,14 +1,10 @@
-package client
+package main
 
 import (
 	"crypto/rand"
 	"log"
 	"os"
 	"path/filepath"
-
-	"github.com/matei-oltean/go-torrent/fileutils"
-	"github.com/matei-oltean/go-torrent/messaging"
-	"github.com/matei-oltean/go-torrent/peer"
 )
 
 // fileDescriptor is a file writer plus the remaining bytes to be writtent
@@ -27,7 +23,7 @@ func clientID() [20]byte {
 // downloadPieces retrieves the file as a byte array
 // from torrent file, a list of peers and a client ID
 // and writes them to the file system
-func downloadPieces(inf *fileutils.Info, peersAddr []string, clientID [20]byte, outDir string) error {
+func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, outDir string) error {
 	fileLen := inf.Length
 	pieceLen := inf.PieceLength
 	numPieces := len(inf.Pieces)
@@ -60,9 +56,9 @@ func downloadPieces(inf *fileutils.Info, peersAddr []string, clientID [20]byte, 
 		fReaders[i] = &fileDescriptor{fd, f.Length}
 	}
 	// Create chan of pieces to download
-	pieces := make(chan *peer.Piece, fileLen)
+	pieces := make(chan *Piece, fileLen)
 	// Create chan of results to collect
-	results := make(chan *peer.Result)
+	results := make(chan *Result)
 	pos := 0
 	fileIndex := 0
 	for i, hash := range inf.Pieces {
@@ -71,7 +67,7 @@ func downloadPieces(inf *fileutils.Info, peersAddr []string, clientID [20]byte, 
 		if i == numPieces-1 && fileLen%pieceLen != 0 {
 			length = fileLen % pieceLen
 		}
-		pieces <- &peer.Piece{
+		pieces <- &Piece{
 			Index:  i,
 			Hash:   hash,
 			Length: length,
@@ -85,11 +81,11 @@ func downloadPieces(inf *fileutils.Info, peersAddr []string, clientID [20]byte, 
 		pieceToFile[i] = f
 	}
 
-	handshake := messaging.Handshake(inf.Hash, clientID)
+	handshake := Handshake(inf.Hash, clientID)
 
 	// Create workers to download the pieces
 	for _, peerAddress := range peersAddr {
-		go peer.Download(handshake, peerAddress, pieces, results)
+		go DownloadPieces(handshake, peerAddress, pieces, results)
 	}
 
 	// Parse the results as they come and copy them to file
@@ -134,7 +130,7 @@ func downloadPieces(inf *fileutils.Info, peersAddr []string, clientID [20]byte, 
 // with the default name coming from the torrent file
 func Download(torrentPath, outputPath string) error {
 	id := clientID()
-	t, err := fileutils.OpenTorrent(torrentPath)
+	t, err := OpenTorrent(torrentPath)
 	if err != nil {
 		return err
 	}
