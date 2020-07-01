@@ -1,10 +1,6 @@
 package main
 
-import (
-	"flag"
-
-	"github.com/matei-oltean/go-torrent/client"
-)
+import "flag"
 
 func main() {
 	const (
@@ -27,7 +23,7 @@ func main() {
 		return
 	}
 
-	err := client.Download(torrentPath, outPath)
+	err := Download(torrentPath, outPath)
 	if err != nil {
 		println(err.Error())
 		return

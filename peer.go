@@ -1,4 +1,4 @@
-package peer
+package main
 
 import (
 	"bytes"
@@ -8,8 +8,6 @@ import (
 	"log"
 	"net"
 	"time"
-
-	"github.com/matei-oltean/go-torrent/messaging"
 )
 
 // chunkSize is the max length that can be downloaded at once
@@ -47,8 +45,8 @@ type peer struct {
 	choked   bool
 }
 
-// new creates a new peer from a handshake and a peer address
-func new(handshake []byte, address string) (*peer, error) {
+// newPeer creates a new peer from a handshake and a peer address
+func newPeer(handshake []byte, address string) (*peer, error) {
 	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 	if err != nil {
 		return nil, err
@@ -59,19 +57,19 @@ func new(handshake []byte, address string) (*peer, error) {
 		return nil, err
 	}
 	// We should get a handshake back
-	received := make([]byte, messaging.HandshakeSize)
+	received := make([]byte, HandshakeSize)
 	n, err := conn.Read(received)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-	if n != messaging.HandshakeSize {
+	if n != HandshakeSize {
 		conn.Close()
-		return nil, fmt.Errorf("received handshake with length %d instead of %d", n, messaging.HandshakeSize)
+		return nil, fmt.Errorf("received handshake with length %d instead of %d", n, HandshakeSize)
 	}
 
 	// It should have the same protocol
-	startLen := 1 + len(messaging.Protocol)
+	startLen := 1 + len(Protocol)
 	if !bytes.Equal(received[:startLen], handshake[:startLen]) {
 		conn.Close()
 		return nil, fmt.Errorf("received handshake with the wrong protocol: %s", received[:startLen])
@@ -83,7 +81,7 @@ func new(handshake []byte, address string) (*peer, error) {
 	}
 
 	// next we should receive a bitfield message
-	bitfield, err := messaging.ReadBitfield(conn)
+	bitfield, err := ReadBitfield(conn)
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -98,12 +96,12 @@ func new(handshake []byte, address string) (*peer, error) {
 
 // startConn sends an unchoke message followed by an interested
 func (p *peer) startConn() error {
-	unchokeMsg := messaging.Unchoke()
+	unchokeMsg := Unchoke()
 	_, err := p.conn.Write(unchokeMsg)
 	if err != nil {
 		return err
 	}
-	interestedMsg := messaging.Interested()
+	interestedMsg := Interested()
 	_, err = p.conn.Write(interestedMsg)
 	return err
 }
@@ -129,21 +127,21 @@ func parsePiece(payload []byte) (*chunk, error) {
 // read reads and parses the first non keepalive message from the connection
 // fills the argument and the length of the piece in case of a piece message
 func (p *peer) read() (*chunk, error) {
-	msg, err := messaging.Read(p.conn)
+	msg, err := Read(p.conn)
 	if err != nil {
 		return nil, err
 	}
 	switch msg.Type {
-	case messaging.MChoke:
+	case MChoke:
 		p.choked = true
-	case messaging.MUnchoke:
+	case MUnchoke:
 		p.choked = false
-	case messaging.MHave:
+	case MHave:
 		if len(msg.Payload) != 4 {
 			return nil, fmt.Errorf("expected payload length 4 got %d instead", len(msg.Payload))
 		}
 		p.bitfield.set(int(binary.BigEndian.Uint32(msg.Payload)))
-	case messaging.MPiece:
+	case MPiece:
 		return parsePiece(msg.Payload)
 	}
 	return nil, nil
@@ -168,7 +166,7 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 			if start+length > piece.Length {
 				length = piece.Length - start
 			}
-			req := messaging.Request(piece.Index, start, length)
+			req := Request(piece.Index, start, length)
 			_, err := p.conn.Write(req)
 			if err != nil {
 				return nil, err
@@ -200,9 +198,9 @@ func (p *peer) downloadPiece(piece *Piece) ([]byte, error) {
 	return res, nil
 }
 
-// Download creates a new peer that downloads pieces from a file
-func Download(handshake []byte, address string, pieces chan *Piece, results chan<- *Result) {
-	peer, err := new(handshake, address)
+// DownloadPieces creates a new peer that downloads pieces from a file
+func DownloadPieces(handshake []byte, address string, pieces chan *Piece, results chan<- *Result) {
+	peer, err := newPeer(handshake, address)
 	if err != nil {
 		log.Printf("Could not connect to peer at %s: %s", address, err)
 		return
@@ -237,7 +235,7 @@ func Download(handshake []byte, address string, pieces chan *Piece, results chan
 			continue
 		}
 
-		peer.conn.Write(messaging.Have(piece.Index))
+		peer.conn.Write(Have(piece.Index))
 		results <- &Result{Index: piece.Index, Value: res}
 	}
 }

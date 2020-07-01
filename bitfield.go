@@ -1,4 +1,4 @@
-package peer
+package main
 
 // bitfield represents a bitfield
 type bitfield []byte

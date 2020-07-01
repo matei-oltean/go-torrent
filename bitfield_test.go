@@ -1,4 +1,4 @@
-package peer
+package main
 
 import (
 	"math/rand"

@@ -1,4 +1,4 @@
-package fileutils
+package main
 
 import (
 	"bufio"
@@ -38,7 +38,7 @@ type SubFile struct {
 // TorrentFile represents a flattened torrent file
 type TorrentFile struct {
 	Announce []*url.URL
-	Info     *Info
+	Info     *TorrentInfo
 }
 
 // parseAnnounceList parses and flattens the announce list
@@ -188,7 +188,7 @@ func prettyTorrentBencode(ben *bencode) (*TorrentFile, error) {
 	}
 	return &TorrentFile{
 		Announce: ann,
-		Info: &Info{
+		Info: &TorrentInfo{
 			Hash:        ben.Hash,
 			Length:      finalLen,
 			Files:       subFiles,

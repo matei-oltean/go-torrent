@@ -1,4 +1,4 @@
-package fileutils
+package main
 
 import (
 	"encoding/base32"
