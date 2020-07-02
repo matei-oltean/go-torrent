@@ -127,7 +127,7 @@ func parsePiece(payload []byte) (*chunk, error) {
 // read reads and parses the first non keepalive message from the connection
 // fills the argument and the length of the piece in case of a piece message
 func (p *peer) read() (*chunk, error) {
-	msg, err := Read(p.conn)
+	msg, err := ReadMessage(p.conn)
 	if err != nil {
 		return nil, err
 	}

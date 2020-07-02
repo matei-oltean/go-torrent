@@ -28,50 +28,41 @@ type Message struct {
 	Payload []byte
 }
 
-// readMessage reads and parses a Message coming from a connection
-func readMessage(reader io.Reader) (*Message, error) {
+// ReadMessage reads and parses a Message coming from a connection
+//
+// Reading is retried while the message is a keepalive message
+func ReadMessage(reader io.Reader) (*Message, error) {
 	// A Message is composed as follows:
 	// Message length (4 bytes big endian)
 	// Message type (1 byte)
 	// Message payload if any
 
 	binLength := make([]byte, 4)
-	_, err := io.ReadFull(reader, binLength)
-	if err != nil {
-		return nil, err
-	}
-	msgLen := binary.BigEndian.Uint32(binLength)
-	// a msgLen of zero means it is a keepalive Message
-	if msgLen == 0 {
-		return nil, nil
-	}
+	for {
+		if _, err := io.ReadFull(reader, binLength); err != nil {
+			return nil, err
+		}
+		msgLen := binary.BigEndian.Uint32(binLength)
+		// a msgLen of zero means it is a keepalive Message
+		if msgLen == 0 {
+			continue
+		}
 
-	msgBuff := make([]byte, msgLen)
-	_, err = io.ReadFull(reader, msgBuff)
-	if err != nil {
-		return nil, err
+		msgBuff := make([]byte, msgLen)
+		if _, err := io.ReadFull(reader, msgBuff); err != nil {
+			return nil, err
+		}
+		return &Message{
+			Type:    MessageType(msgBuff[0]),
+			Payload: msgBuff[1:],
+		}, nil
 	}
-	return &Message{
-		Type:    MessageType(msgBuff[0]),
-		Payload: msgBuff[1:],
-	}, nil
-}
-
-// Read is a wrapper around readMessage
-// it reads and parses messages from the connection
-// until an non keepalive Message is received
-// which is then returned
-func Read(reader io.Reader) (msg *Message, err error) {
-	for msg == nil && err == nil {
-		msg, err = readMessage(reader)
-	}
-	return
 }
 
 // ReadBitfield reads a Message and returns its bitfield
 // If the Message is not a bitfield Message, returns an error
 func ReadBitfield(reader io.Reader) ([]byte, error) {
-	msg, err := Read(reader)
+	msg, err := ReadMessage(reader)
 	if err != nil {
 		return nil, err
 	}
