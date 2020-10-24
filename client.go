@@ -116,7 +116,7 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 			if fd.Remaining == 0 {
 				fd.FileWriter.Close()
 				delete(fReaders, i)
-				log.Print("Finished downloading", filepath.Base(f.Path))
+				log.Printf("Finished downloading %s", filepath.Base(f.Path))
 			}
 		}
 		if done%10 == 0 {
