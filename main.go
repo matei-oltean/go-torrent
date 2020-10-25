@@ -1,26 +1,35 @@
 package main
 
-import "flag"
+import (
+	"flag"
+	"fmt"
+	"os"
+)
 
 func main() {
 	const (
-		torrentDescription = "Required: path of the torrent file."
-		outDescription     = "Optional: path of the output file.\nIf not set, the file will be downloaded in the same folder as the torrent file with the name in that file."
+		outDescription = "Optional: path of the output file.\nIf not set, the file will be downloaded in the same folder as the torrent file with the name in that file."
 	)
-	var torrentPath string
-	var outPath string
 
-	flag.StringVar(&torrentPath, "f", "", torrentDescription)
-	flag.StringVar(&outPath, "o", "", outDescription)
+	args := os.Args
 
-	flag.Parse()
-
-	if torrentPath == "" {
+	if len(args) <= 1 {
 		println("Please provide a path for the torrent file")
 		return
 	}
 
-	err := Download(torrentPath, outPath)
+	torrentPath := args[1]
+	_, err := os.Stat(torrentPath)
+	if err != nil {
+		fmt.Printf("The path %s you provided is invalid: %s\n", torrentPath, err)
+		return
+	}
+
+	var outPath string
+	flag.StringVar(&outPath, "o", "", outDescription)
+	flag.Parse()
+
+	err = Download(torrentPath, outPath)
 	if err != nil {
 		println(err.Error())
 		return

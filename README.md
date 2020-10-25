@@ -6,7 +6,7 @@ To use:
 * Clone the repository with `https://github.com/matei-oltean/go-torrent.git` (or `go get github.com/matei-oltean/go-torrent`)
 * Go to the cloned repository (`cd go-torrent`)
 * Build it `go build`
-* Launch it with `./go-torrent -f path_to_torrent_file`. You can also force the name of the output file by adding `-o path_to_output`; if not supplied, the file will be downloaded in the same folder as the torrent file with the name supplied by the torrent file.
+* Launch it with `./go-torrent path_to_torrent_file`. You can also force the name of the output file by adding `-o path_to_output`; if not supplied, the file will be downloaded in the same folder as the torrent file with the name supplied by the torrent file.
 
 Next steps:
 * Clean up the code (package separation, add tests, etc.)
