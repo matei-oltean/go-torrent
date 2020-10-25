@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 )
 
+const (
+	notificationStep = 5
+)
+
 // fileDescriptor is a file writer plus the remaining bytes to be writtent
 type fileDescriptor struct {
 	FileWriter *os.File
@@ -90,6 +94,7 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 	}
 
 	// Parse the results as they come and copy them to file
+	nextNotification := notificationStep
 	for done := 1; done <= numPieces; done++ {
 		result := <-results
 		// write to the associated files
@@ -116,11 +121,15 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 			if fd.Remaining == 0 {
 				fd.FileWriter.Close()
 				delete(fReaders, i)
-				log.Print("Finished downloading", filepath.Base(f.Path))
+				log.Printf("Finished downloading %s", filepath.Base(f.Path))
 			}
 		}
+
+		for p := float64(done) / float64(numPieces) * 100; p > float64(nextNotification); nextNotification += notificationStep {
+			log.Printf("Progress (%.2f%%)", p)
+		}
 		if done%10 == 0 {
-			log.Printf("Downloaded %d/%d pieces (%.2f%%)", done, numPieces, float64(done)/float64(numPieces)*100)
+			log.Printf("Downloaded %d/%d pieces", done, numPieces)
 		}
 	}
 	return nil
