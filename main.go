@@ -11,10 +11,7 @@ func main() {
 	var outPath string
 
 	flag.StringVar(&torrentPath, "f", "", torrentDescription)
-	flag.StringVar(&torrentPath, "file", "", torrentDescription)
-
 	flag.StringVar(&outPath, "o", "", outDescription)
-	flag.StringVar(&outPath, "output", "", outDescription)
 
 	flag.Parse()
 
