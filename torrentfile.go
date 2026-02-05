@@ -38,7 +38,7 @@ type TorrentFile struct {
 func parseAnnounceList(l []bencode) []*url.URL {
 	q := []*url.URL{}
 	for _, subL := range l {
-		if subL.List == nil || len(subL.List) == 0 {
+		if len(subL.List) == 0 {
 			continue
 		}
 		for _, u := range subL.List {
