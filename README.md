@@ -5,8 +5,9 @@
 A BitTorrent client written in Go, implementing [BEP 3](https://www.bittorrent.org/beps/bep_0003.html) (core protocol) with support for:
 - HTTP and UDP trackers
 - Multi-file torrents
-- Magnet link parsing
+- Magnet link downloads (via DHT and trackers)
 - Extension protocol (BEP 10) for metadata download
+- DHT (BEP 5) for trackerless peer discovery
 
 ## Installation
 
@@ -20,10 +21,14 @@ go build
 
 ```bash
 # Download from a .torrent file
-./go-torrent -f path/to/file.torrent
+./go-torrent path/to/file.torrent
+
+# Download from a magnet link
+./go-torrent "magnet:?xt=urn:btih:..."
 
 # Specify output directory
-./go-torrent -f path/to/file.torrent -o /path/to/output
+./go-torrent -o /path/to/output path/to/file.torrent
+./go-torrent -o /path/to/output "magnet:?xt=urn:btih:..."
 ```
 
 ## Roadmap
@@ -32,7 +37,7 @@ go build
 - [x] HTTP/UDP tracker support
 - [x] Multi-file torrents
 - [x] Extension protocol (BEP 10)
-- [ ] DHT (BEP 5) - *in progress*
-- [ ] Magnet link downloads
+- [x] DHT (BEP 5)
+- [x] Magnet link downloads
 - [ ] Seeding support
 - [ ] GUI

@@ -4,15 +4,18 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func usage() {
-	fmt.Printf(`%s [options] torrent-file
+	fmt.Printf(`%s [options] <torrent-file|magnet-link>
 
-    torrent-file       Required: path of the torrent file
-    -o output-file     Optional: path of the output file.
-                       If not set, the file will be downloaded in the same
-                       folder as the torrent file with the name in that file
+    torrent-file       Path of the torrent file
+    magnet-link        Magnet link (starting with magnet:)
+
+    -o output-dir      Optional: path of the output directory.
+                       If not set, the file will be downloaded in the current
+                       directory (for magnets) or torrent file folder (for .torrent)
 `, os.Args[0])
 	os.Exit(2)
 }
@@ -26,8 +29,18 @@ func main() {
 	if flag.NArg() != 1 {
 		usage()
 	}
-	torrentPath := os.Args[len(os.Args)-1]
-	err := Download(torrentPath, outPath)
+	input := os.Args[len(os.Args)-1]
+
+	var err error
+	if strings.HasPrefix(input, "magnet:") {
+		if outPath == "" {
+			outPath, _ = os.Getwd()
+		}
+		err = DownloadMagnet(input, outPath)
+	} else {
+		err = Download(input, outPath)
+	}
+
 	if err != nil {
 		println(err.Error())
 		os.Exit(2)

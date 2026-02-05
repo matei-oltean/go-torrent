@@ -30,9 +30,11 @@
    "Host": "explodie.org:6969",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   },
   {
    "Scheme": "udp",
@@ -41,9 +43,11 @@
    "Host": "tracker.coppersurfer.tk:6969",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   },
   {
    "Scheme": "udp",
@@ -52,9 +56,11 @@
    "Host": "tracker.empire-js.us:1337",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   },
   {
    "Scheme": "udp",
@@ -63,9 +69,11 @@
    "Host": "tracker.leechers-paradise.org:6969",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   },
   {
    "Scheme": "udp",
@@ -74,9 +82,11 @@
    "Host": "tracker.opentrackr.org:1337",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   },
   {
    "Scheme": "wss",
@@ -85,9 +95,11 @@
    "Host": "tracker.btorrent.xyz",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   },
   {
    "Scheme": "wss",
@@ -96,9 +108,11 @@
    "Host": "tracker.fastcast.nz",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   },
   {
    "Scheme": "wss",
@@ -107,10 +121,16 @@
    "Host": "tracker.openwebtorrent.com",
    "Path": "",
    "RawPath": "",
+   "OmitHost": false,
    "ForceQuery": false,
    "RawQuery": "",
-   "Fragment": ""
+   "Fragment": "",
+   "RawFragment": ""
   }
  ],
- "PeerAddresses": null
+ "PeerAddresses": null,
+ "WebSeeds": [
+  "https://webtorrent.io/torrents/"
+ ],
+ "ExactSource": "https://webtorrent.io/torrents/big-buck-bunny.torrent"
 }

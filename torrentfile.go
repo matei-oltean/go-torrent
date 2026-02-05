@@ -212,7 +212,8 @@ func (t *TorrentFile) getPeersUDP(clientID [20]byte) (*TrackerResponse, error) {
 				}
 				continue
 			}
-			return t.Info.getPeerFromConnectionID(clientID, conn, connID, uConn.Scheme == "udp6")
+			ipv6 := uConn.Scheme == "udp6"
+			return announceUDP(conn, connID, t.Info.Hash, clientID, int64(t.Info.Length), ipv6)
 		}
 	}
 	return nil, fmt.Errorf("timed out after %d retries", udpMaxRetries)

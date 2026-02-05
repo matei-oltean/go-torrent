@@ -8,74 +8,145 @@ import (
 	"strings"
 )
 
-// Magnet represents the parsing of a magnet link
-// only Hash is assured to be present
-// see http://bittorrent.org/beps/bep_0009.html
+// Magnet represents a parsed magnet link
+// See BEP 9: http://bittorrent.org/beps/bep_0009.html
 type Magnet struct {
-	Hash          [20]byte
-	Name          string
-	TrackersURL   []*url.URL
-	PeerAddresses []string
+	Hash          [20]byte   // xt: exact topic (info hash)
+	Name          string     // dn: display name
+	TrackersURL   []*url.URL // tr: tracker URLs
+	PeerAddresses []string   // x.pe: peer addresses (BEP 9)
+	WebSeeds      []string   // ws: web seeds (BEP 19)
+	ExactSource   string     // xs: exact source (URL to .torrent)
 }
 
-// ParseMagnet parses a magnet link
+// ParseMagnet parses a magnet link into a Magnet struct
 func ParseMagnet(m string) (*Magnet, error) {
+	if !strings.HasPrefix(m, "magnet:?") {
+		return nil, fmt.Errorf("invalid magnet link: must start with 'magnet:?'")
+	}
+
 	link, err := url.Parse(m)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse magnet URL: %w", err)
+	}
+
+	query := link.Query()
+
+	// Parse info hash (required)
+	hash, err := parseInfoHash(query)
 	if err != nil {
 		return nil, err
 	}
-	query := link.Query()
-	xts, ok := query["xt"]
-	if !ok {
-		return nil, fmt.Errorf("magnet link %s is missing parameter \"xt\"", m)
+
+	// Parse display name (optional)
+	name := ""
+	if dn, ok := query["dn"]; ok && len(dn) > 0 {
+		name = dn[0]
 	}
-	xt := strings.Split(xts[0], "urn:btih:")
-	if len(xt) != 2 {
-		return nil, fmt.Errorf("magnet link %s is missing parameter \"urn:btih:\"", m)
-	}
-	encHash := xt[1]
-	var hash [20]byte
-	if len(encHash) == 40 {
-		// hex encoded
-		decHash, err := hex.DecodeString(encHash)
-		if err != nil {
-			return nil, err
-		}
-		copy(hash[:], decHash)
-	} else if len(encHash) == 32 {
-		// base 32 encoded
-		decHash, err := base32.StdEncoding.DecodeString(encHash)
-		if err != nil {
-			return nil, err
-		}
-		copy(hash[:], decHash)
-	} else {
-		return nil, fmt.Errorf("magnet link %s has hash %s of incorrect size %d (expected 32 or 40)", m, encHash, len(encHash))
-	}
-	var name string
-	n, ok := query["dn"]
-	if ok {
-		name = n[0]
-	}
+
+	// Parse trackers (optional)
 	var trackers []*url.URL
-	tr, ok := query["tr"]
-	if ok {
+	if tr, ok := query["tr"]; ok {
 		for _, t := range tr {
-			url, err := url.Parse(t)
-			if err == nil {
-				trackers = append(trackers, url)
+			if u, err := url.Parse(t); err == nil {
+				trackers = append(trackers, u)
 			}
 		}
 	}
+
+	// Parse peer addresses (optional, BEP 9 extension)
 	var peerAddresses []string
-	addr, ok := query["x.pe"]
-	if ok {
-		peerAddresses = addr
+	if pe, ok := query["x.pe"]; ok {
+		peerAddresses = pe
 	}
+
+	// Parse web seeds (optional, BEP 19)
+	var webSeeds []string
+	if ws, ok := query["ws"]; ok {
+		webSeeds = ws
+	}
+
+	// Parse exact source (optional)
+	exactSource := ""
+	if xs, ok := query["xs"]; ok && len(xs) > 0 {
+		exactSource = xs[0]
+	}
+
 	return &Magnet{
 		Hash:          hash,
 		Name:          name,
 		TrackersURL:   trackers,
 		PeerAddresses: peerAddresses,
+		WebSeeds:      webSeeds,
+		ExactSource:   exactSource,
 	}, nil
+}
+
+// parseInfoHash extracts the 20-byte info hash from the magnet query
+func parseInfoHash(query url.Values) ([20]byte, error) {
+	var hash [20]byte
+
+	xts, ok := query["xt"]
+	if !ok || len(xts) == 0 {
+		return hash, fmt.Errorf("magnet link missing 'xt' parameter")
+	}
+
+	xt := xts[0]
+
+	// Handle different xt formats
+	var encHash string
+	switch {
+	case strings.HasPrefix(xt, "urn:btih:"):
+		encHash = strings.TrimPrefix(xt, "urn:btih:")
+	case strings.HasPrefix(xt, "urn:btmh:"):
+		// Multihash format (BEP 52) - extract the hash portion
+		return hash, fmt.Errorf("multihash (urn:btmh) not yet supported")
+	default:
+		return hash, fmt.Errorf("unsupported xt format: %s", xt)
+	}
+
+	// Decode the hash (hex or base32)
+	switch len(encHash) {
+	case 40:
+		// Hex encoded (40 chars = 20 bytes)
+		decoded, err := hex.DecodeString(encHash)
+		if err != nil {
+			return hash, fmt.Errorf("invalid hex hash: %w", err)
+		}
+		copy(hash[:], decoded)
+	case 32:
+		// Base32 encoded (32 chars = 20 bytes)
+		decoded, err := base32.StdEncoding.DecodeString(strings.ToUpper(encHash))
+		if err != nil {
+			return hash, fmt.Errorf("invalid base32 hash: %w", err)
+		}
+		copy(hash[:], decoded)
+	default:
+		return hash, fmt.Errorf("invalid hash length %d (expected 32 or 40)", len(encHash))
+	}
+
+	return hash, nil
+}
+
+// HasTrackers returns true if the magnet has any tracker URLs
+func (m *Magnet) HasTrackers() bool {
+	return len(m.TrackersURL) > 0
+}
+
+// HasPeers returns true if the magnet has any peer addresses
+func (m *Magnet) HasPeers() bool {
+	return len(m.PeerAddresses) > 0
+}
+
+// InfoHashHex returns the info hash as a hex string
+func (m *Magnet) InfoHashHex() string {
+	return hex.EncodeToString(m.Hash[:])
+}
+
+// DisplayName returns the display name, or a fallback based on the hash
+func (m *Magnet) DisplayName() string {
+	if m.Name != "" {
+		return m.Name
+	}
+	return m.InfoHashHex()[:16] + "..."
 }

@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
+	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
+
+	"github.com/matei-oltean/go-torrent/dht"
 )
 
 const (
@@ -166,4 +171,118 @@ func Download(torrentPath, outputPath string) error {
 		return err
 	}
 	return nil
+}
+
+// DownloadMagnet downloads a torrent from a magnet link using DHT and trackers
+func DownloadMagnet(magnetLink, outputPath string) error {
+	magnet, err := ParseMagnet(magnetLink)
+	if err != nil {
+		return fmt.Errorf("failed to parse magnet link: %w", err)
+	}
+
+	id, err := clientID()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Downloading: %s", magnet.DisplayName())
+	log.Printf("Info hash: %s", magnet.InfoHashHex())
+
+	// Use peer collector to deduplicate peers
+	collector := NewPeerCollector()
+
+	// Add peers from magnet link (x.pe parameter)
+	if magnet.HasPeers() {
+		added := collector.Add(magnet.PeerAddresses, "magnet link")
+		if added > 0 {
+			log.Printf("Added %d peers from magnet link", added)
+		}
+	}
+
+	// Start DHT for peer discovery
+	var d *dht.DHT
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	d, err = dht.New()
+	if err != nil {
+		log.Printf("DHT: failed to create: %v", err)
+	} else {
+		defer d.Stop()
+
+		if err := d.Start(ctx); err != nil {
+			log.Printf("DHT: failed to start: %v", err)
+			d = nil
+		} else {
+			log.Printf("DHT: started, bootstrapping...")
+			d.Bootstrap()
+
+			// Add magnet peer addresses to DHT routing table
+			for _, addr := range magnet.PeerAddresses {
+				if udpAddr, err := net.ResolveUDPAddr("udp", addr); err == nil {
+					// We don't know the node ID, so we can't add to routing table directly
+					// But we can ping them to discover their ID
+					go d.Ping(udpAddr)
+				}
+			}
+
+			log.Printf("DHT: searching for peers...")
+			dhtPeers, err := d.GetPeers(magnet.Hash)
+			if err != nil {
+				log.Printf("DHT: get_peers failed: %v", err)
+			} else {
+				added := collector.Add(dhtPeers, "DHT")
+				if added > 0 {
+					log.Printf("Added %d peers from DHT", added)
+				}
+			}
+		}
+	}
+
+	// Query trackers from magnet link in parallel
+	if magnet.HasTrackers() {
+		log.Printf("Querying %d trackers...", len(magnet.TrackersURL))
+		trackerPeers := QueryTrackers(magnet.TrackersURL, magnet.Hash, id)
+		added := collector.Add(trackerPeers, "trackers")
+		if added > 0 {
+			log.Printf("Added %d peers from trackers", added)
+		}
+	}
+
+	if collector.Count() == 0 {
+		return fmt.Errorf("no peers found from any source")
+	}
+
+	log.Printf("Total peers: %d", collector.Count())
+
+	// Fetch metadata and download file
+	return downloadFromPeers(magnet.Hash, id, collector.Peers(), outputPath)
+}
+
+// downloadFromPeers fetches metadata from peers and downloads the torrent
+func downloadFromPeers(infoHash, clientID [20]byte, peers []string, outputPath string) error {
+	// Create channels for metadata exchange
+	pieces := make(chan *Piece)
+	info := make(chan *TorrentInfo)
+	results := make(chan *Result)
+
+	// Start workers to get metadata
+	for _, peerAddress := range peers {
+		go DownloadPieces(infoHash, clientID, peerAddress, pieces, info, results)
+	}
+
+	// Wait for metadata from any peer
+	log.Printf("Fetching torrent metadata from peers...")
+	torrentInfo := <-info
+	log.Printf("Received metadata: %s (%d pieces)", torrentInfo.Name, len(torrentInfo.Pieces))
+
+	// Set up output directory
+	outDir := outputPath
+	if torrentInfo.Multi() {
+		outDir = filepath.Join(outDir, torrentInfo.Name)
+		os.MkdirAll(outDir, os.ModePerm)
+	}
+
+	// Download the actual file
+	return downloadPieces(torrentInfo, peers, clientID, outDir)
 }
