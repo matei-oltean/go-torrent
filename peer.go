@@ -230,6 +230,9 @@ func (p *peer) downloadPiece(piece *Piece, info bool) ([]byte, error) {
 			}
 			var req []byte
 			if info {
+				if p.extensions == nil {
+					return nil, fmt.Errorf("peer does not support metadata extension")
+				}
 				req = RequestMetaData(p.extensions["ut_metadata"], i)
 			} else {
 				req = RequestPiece(piece.Index, start, length)
