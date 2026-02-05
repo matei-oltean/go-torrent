@@ -239,7 +239,7 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto flex">
+      <main className="flex-1 overflow-auto flex flex-col">
         {torrents.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center animate-fade-in flex flex-col items-center">
@@ -296,7 +296,7 @@ function App() {
             </div>
           </div>
         ) : (
-          <div className="space-y-4 py-1">
+          <div className="w-full flex flex-col" style={{ gap: '16px' }}>
             {activeTorrents.length > 0 && (
               <TorrentSection 
                 title="Active" 
@@ -393,13 +393,24 @@ function App() {
                 <label className="text-xs font-semibold uppercase tracking-wide flex items-center" style={{ marginBottom: '8px', gap: '6px', color: 'var(--text-muted)' }}>
                   <File className="w-3.5 h-3.5" /> Torrent File
                 </label>
-                <button
-                  onClick={handleSelectTorrentFile}
-                  className="w-full rounded-xl text-sm border border-[var(--border)] hover:border-[var(--accent)] focus:border-[var(--accent)] focus:outline-none transition-colors text-left cursor-pointer"
-                  style={{ height: '44px', padding: '0 14px', background: 'var(--bg)', color: torrentFile ? 'var(--text)' : 'var(--text-muted)' }}
-                >
-                  {torrentFile || 'Click to select a .torrent file'}
-                </button>
+                <div className="flex" style={{ gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={torrentFile}
+                    readOnly
+                    placeholder="No file selected"
+                    className="flex-1 rounded-xl text-sm border border-[var(--border)] focus:border-[var(--accent)] focus:outline-none transition-colors cursor-pointer"
+                    style={{ height: '44px', padding: '0 14px', background: 'var(--bg)', color: torrentFile ? 'var(--text)' : 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace", fontSize: '12px' }}
+                    onClick={handleSelectTorrentFile}
+                  />
+                  <button
+                    onClick={handleSelectTorrentFile}
+                    className="rounded-xl text-sm font-medium border border-[var(--border)] hover:bg-[var(--border-strong)] transition-colors"
+                    style={{ height: '44px', padding: '0 16px', color: 'var(--text-secondary)' }}
+                  >
+                    Browse
+                  </button>
+                </div>
               </div>
 
               {/* Divider */}
@@ -488,7 +499,8 @@ function TorrentSection({ title, count, children, accent }: { title: string; cou
     <div className="glass rounded-2xl overflow-hidden border border-[var(--border)] shadow-[var(--shadow-sm)]">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full h-12 px-5 flex items-center gap-3 hover:bg-[var(--border)] transition-colors"
+        className="w-full flex items-center hover:bg-[var(--border)] transition-colors"
+        style={{ height: '48px', padding: '0 20px', gap: '12px' }}
       >
         <ChevronDown 
           className={`w-4 h-4 transition-transform duration-200 ${expanded ? '' : '-rotate-90'}`} 
@@ -501,8 +513,8 @@ function TorrentSection({ title, count, children, accent }: { title: string; cou
           {title}
         </span>
         <span 
-          className="text-[10px] font-bold px-2 py-0.5 rounded-md"
-          style={{ background: accent ? 'var(--accent-glow)' : 'var(--border)', color: accent ? 'var(--accent)' : 'var(--text-muted)' }}
+          className="text-[10px] font-bold rounded-md"
+          style={{ padding: '2px 8px', background: accent ? 'var(--accent-glow)' : 'var(--border)', color: accent ? 'var(--accent)' : 'var(--text-muted)' }}
         >
           {count}
         </span>
@@ -530,14 +542,14 @@ function TorrentCard({ torrent, selected, onSelect, onRemove, delay = 0 }: {
   return (
     <div
       onClick={onSelect}
-      className={`group px-5 py-3.5 cursor-pointer transition-all duration-200 border-b last:border-b-0 border-[var(--border)] animate-fade-in ${
+      className={`group cursor-pointer transition-all duration-200 border-b last:border-b-0 border-[var(--border)] animate-fade-in ${
         selected ? 'bg-[var(--accent-glow)]' : 'hover:bg-[var(--border)]'
       }`}
-      style={{ animationDelay: `${delay}ms` }}
+      style={{ padding: '14px 20px', animationDelay: `${delay}ms` }}
     >
       {/* Top Row */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+        <div className="flex items-center min-w-0 flex-1" style={{ gap: '10px' }}>
           {/* Status Icon */}
           <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'animate-pulse' : ''}`}
             style={{ 
@@ -571,7 +583,7 @@ function TorrentCard({ torrent, selected, onSelect, onRemove, delay = 0 }: {
         </div>
 
         {/* Actions & Progress */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center flex-shrink-0" style={{ gap: '12px' }}>
           <span 
             className="text-xs font-bold tabular-nums w-10 text-right"
             style={{ color: 'var(--accent)', fontFamily: "'JetBrains Mono', monospace" }}
@@ -589,7 +601,7 @@ function TorrentCard({ torrent, selected, onSelect, onRemove, delay = 0 }: {
       </div>
 
       {/* Progress Bar */}
-      <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: 'var(--border)' }}>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)', marginBottom: '12px' }}>
         <div
           className={`h-full rounded-full transition-all duration-500 ${isActive ? 'animate-shimmer' : ''}`}
           style={{ 
@@ -603,26 +615,26 @@ function TorrentCard({ torrent, selected, onSelect, onRemove, delay = 0 }: {
 
       {/* Stats */}
       <div 
-        className="flex items-center gap-5 text-[11px]"
-        style={{ color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}
+        className="flex items-center text-[11px]"
+        style={{ gap: '20px', color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}
       >
         {isActive ? (
           <>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center" style={{ gap: '4px' }}>
               <Download className="w-3 h-3" style={{ color: 'var(--accent)' }} />
               {formatSpeed(torrent.downSpeed)}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center" style={{ gap: '4px' }}>
               <Users className="w-3 h-3" />
               {torrent.peers}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center" style={{ gap: '4px' }}>
               <Clock className="w-3 h-3" />
               {eta}
             </span>
           </>
         ) : (
-          <span className="flex items-center gap-1">
+          <span className="flex items-center" style={{ gap: '4px' }}>
             <HardDrive className="w-3 h-3" />
             {formatBytes(torrent.size)}
           </span>
