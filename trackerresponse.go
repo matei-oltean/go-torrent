@@ -29,7 +29,7 @@ func parsePeerList(peers string, ipv6 bool) ([]string, error) {
 	}
 	peerSize := 2 + ipSize
 	if len(peerBytes)%peerSize != 0 {
-		return nil, fmt.Errorf("Peers has a length not divisible by %d: %d", peerSize, len(peerBytes))
+		return nil, fmt.Errorf("peers has a length not divisible by %d: %d", peerSize, len(peerBytes))
 	}
 	peerList := make([]string, len(peerBytes)/peerSize)
 	for i := 0; i < len(peerBytes); i += peerSize {
@@ -43,21 +43,21 @@ func parsePeerList(peers string, ipv6 bool) ([]string, error) {
 func prettyTrackerBencode(ben *bencode) (*TrackerResponse, error) {
 	dic := ben.Dict
 	if dic == nil {
-		return nil, errors.New("Tracker response has no dictionary")
+		return nil, errors.New("tracker response has no dictionary")
 	}
 
 	if failure, ok := dic["failure reason"]; ok {
-		return nil, fmt.Errorf("Tracker response responded with failure: %s", failure.Str)
+		return nil, fmt.Errorf("tracker response responded with failure: %s", failure.Str)
 	}
 
 	interval, ok := dic["interval"]
 	if !ok || interval.Int == 0 {
-		return nil, errors.New("Tracker response missing interval key")
+		return nil, errors.New("tracker response missing interval key")
 	}
 
 	peers, ok := dic["peers"]
 	if !ok || peers.Str == "" {
-		return nil, errors.New("Tracker response missing peers key")
+		return nil, errors.New("tracker response missing peers key")
 	}
 
 	peerList, err := parsePeerList(peers.Str, false)
@@ -88,7 +88,7 @@ func getTrackerResponse(announceURL string) (*TrackerResponse, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("Received a non 200 code from the tracker: %s", res.Status)
+		return nil, fmt.Errorf("received a non 200 code from the tracker: %s", res.Status)
 	}
 
 	bencode, err := decode(bufio.NewReader(res.Body), new(bytes.Buffer), false)

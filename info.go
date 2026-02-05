@@ -40,7 +40,7 @@ type TorrentInfo struct {
 func splitPieces(pieces string) ([][20]byte, error) {
 	buff := []byte(pieces)
 	if len(buff)%20 != 0 {
-		return nil, fmt.Errorf("Pieces has a length not divisible by 20: %d", len(buff))
+		return nil, fmt.Errorf("pieces has a length not divisible by 20: %d", len(buff))
 	}
 	hashes := make([][20]byte, len(buff)/20)
 	for i := range hashes {

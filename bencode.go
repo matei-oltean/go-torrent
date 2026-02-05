@@ -53,7 +53,7 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*bencode, e
 			}
 			key := val.Str
 			if key == "" {
-				return nil, errors.New("Dictionary has a non string key")
+				return nil, errors.New("dictionary has a non string key")
 			}
 
 			// We want to hash the info struct

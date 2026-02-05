@@ -1,6 +1,7 @@
 package main
 
 import (
+	crand "crypto/rand"
 	"math/rand"
 	"testing"
 )
@@ -16,7 +17,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestGetRandomised(t *testing.T) {
-	for i := 0; i < ntests; i++ {
+	for range ntests {
 		bf := generateBitfield(t)
 		var expected []bool
 
@@ -32,7 +33,7 @@ func TestGetRandomised(t *testing.T) {
 
 func TestSet(t *testing.T) {
 	bitfield := bitfield{0b00000000, 00000000}
-	for index := 0; index < len(bitfield)*8; index++ {
+	for index := range len(bitfield) * 8 {
 		assertGet(t, false, bitfield, index)
 		bitfield.set(index)
 		assertGet(t, true, bitfield, index)
@@ -40,7 +41,7 @@ func TestSet(t *testing.T) {
 }
 
 func TestSetRandomised(t *testing.T) {
-	for i := 0; i < ntests; i++ {
+	for range ntests {
 		bf := generateBitfield(t)
 		bfn := len(bf) * 8
 		idx := rand.Intn(bfn)
@@ -85,7 +86,7 @@ func assertGet(t *testing.T, expected bool, bitfield bitfield, index int) {
 
 func generateBitfield(t *testing.T) bitfield {
 	bytes := make([]byte, 5)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := crand.Read(bytes); err != nil {
 		t.Fatal("rand", err)
 	}
 	return bytes

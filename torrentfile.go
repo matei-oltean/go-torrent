@@ -23,7 +23,7 @@ const (
 
 // UDP tracker constants
 const (
-	udpMaxRetries  = 8               // max retry attempts for UDP tracker
+	udpMaxRetries  = 8                // max retry attempts for UDP tracker
 	udpBaseTimeout = 15 * time.Second // base timeout, doubles each retry
 )
 
@@ -196,9 +196,9 @@ func (t *TorrentFile) getPeersUDP(clientID [20]byte) (*TrackerResponse, error) {
 		conns[j], conns[k] = conns[k], conns[j]
 	}
 	// since we are using udp, retry with an increasing deadline
-	for try := 0; try < udpMaxRetries; try++ {
+	for try := range udpMaxRetries {
 		l := len(conns)
-		for k := 0; k < l; k++ {
+		for range l {
 			uConn := conns[0]
 			conn := uConn.Conn
 			conns = conns[1:]

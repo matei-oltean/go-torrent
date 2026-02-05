@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -25,7 +26,7 @@ func newMock(t *testing.T, tries uint, payloadLength uint32) (io.Reader, Message
 	br.WriteByte(kind)
 
 	payload := make([]byte, payloadLength)
-	if _, err := rand.Read(payload); err != nil {
+	if _, err := crand.Read(payload); err != nil {
 		t.Fatal(err)
 	}
 	br.Write(payload)
