@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"time"
@@ -69,14 +70,10 @@ func newPeer(handshake []byte, address string) (*peer, error) {
 	}
 	// We should get a handshake back
 	received := make([]byte, HandshakeSize)
-	n, err := conn.Read(received)
+	n, err := io.ReadFull(conn, received)
 	if err != nil {
 		conn.Close()
-		return nil, err
-	}
-	if n != HandshakeSize {
-		conn.Close()
-		return nil, fmt.Errorf("received handshake with length %d instead of %d", n, HandshakeSize)
+		return nil, fmt.Errorf("handshake read failed (got %d of %d bytes): %w", n, HandshakeSize, err)
 	}
 
 	// It should have the same protocol
