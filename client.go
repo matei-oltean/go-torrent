@@ -18,10 +18,10 @@ type fileDescriptor struct {
 }
 
 // clientID returns '-', the id 'GT' followed by the version number, '-' and 12 random bytes
-func clientID() [20]byte {
+func clientID() ([20]byte, error) {
 	id := [20]byte{'-', 'G', 'T', '0', '1', '0', '4', '-'}
-	rand.Read(id[8:])
-	return id
+	_, err := rand.Read(id[8:])
+	return id, err
 }
 
 // downloadPieces retrieves the file as a byte array
@@ -139,7 +139,10 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 // if the path is empty, saves it to the folder of the torrent file
 // with the default name coming from the torrent file
 func Download(torrentPath, outputPath string) error {
-	id := clientID()
+	id, err := clientID()
+	if err != nil {
+		return err
+	}
 	t, err := OpenTorrent(torrentPath)
 	if err != nil {
 		return err

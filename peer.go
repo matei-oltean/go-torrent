@@ -316,7 +316,7 @@ func DownloadPieces(hash, clientID [20]byte, address string, pieces chan *Piece,
 				continue
 			}
 
-			peer.conn.Write(Have(piece.Index))
+			peer.conn.Write(Have(piece.Index)) // best-effort, ignore error
 			results <- &Result{Index: piece.Index, Value: res}
 		default:
 			if !needsInfo {
