@@ -7,13 +7,6 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"strconv"
-)
-
-// BitTorrent client port range (BEP 3 recommends 6881-6889)
-const (
-	portRangeStart = 6881
-	portRangeEnd   = 6889
 )
 
 // SubFile represents a subfile in the case of multi file torrents
@@ -148,34 +141,9 @@ func (inf *TorrentInfo) Multi() bool {
 	return len(inf.Files) > 1
 }
 
-// getPeersHTTPS returns the list of peers using https from an info dictionary and client ID
-func (inf *TorrentInfo) getPeersHTTPS(clientID [20]byte, url *url.URL) (*TrackerResponse, error) {
-	var res *TrackerResponse
-	var err error
-	// Try ports in the standard BitTorrent range
-	for port := portRangeStart; port <= portRangeEnd && res == nil; port++ {
-		trackerURL := inf.announceURL(clientID, url, port)
-		res, err = getTrackerResponse(trackerURL)
-		if err == nil {
-			return res, nil
-		}
-	}
-	return nil, err
-}
-
-// announceURL builds the url to call the announcer from a peer id and a port number
-func (inf *TorrentInfo) announceURL(id [20]byte, u *url.URL, port int) string {
-	param := url.Values{
-		"info_hash":  []string{string(inf.Hash[:])},
-		"peer_id":    []string{string(string(id[:]))},
-		"port":       []string{strconv.Itoa(port)},
-		"uploaded":   []string{"0"},
-		"downloaded": []string{"0"},
-		"left":       []string{strconv.Itoa(inf.Length)},
-		"compact":    []string{"1"},
-	}
-	u.RawQuery = param.Encode()
-	return u.String()
+// getPeersHTTP returns the list of peers using HTTP from an info dictionary and client ID
+func (inf *TorrentInfo) getPeersHTTP(clientID [20]byte, trackerURL *url.URL) (*TrackerResponse, error) {
+	return QueryHTTPTracker(trackerURL, inf.Hash, clientID, inf.Length)
 }
 
 // ParseInfo parses a bencoded dictionary as an TorrentInfo struct

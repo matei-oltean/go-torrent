@@ -1,21 +1,33 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/rand"
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 )
 
-// TrackerQueryTimeout is the base timeout for UDP tracker queries
-const TrackerQueryTimeout = 15 * time.Second
+// Tracker timeouts and limits
+const (
+	TrackerQueryTimeout = 15 * time.Second // Base timeout for UDP tracker queries
+	TrackerMaxRetries   = 8                // Maximum retry attempts for UDP
+	httpTimeout         = 30 * time.Second // Timeout for HTTP tracker requests
+	portRangeStart      = 6881             // BEP 3 recommended port range
+	portRangeEnd        = 6889
+)
 
-// TrackerMaxRetries is the maximum number of retry attempts
-const TrackerMaxRetries = 8
+// TrackerResponse represents the tracker response to a get message
+type TrackerResponse struct {
+	Interval       int
+	PeersAddresses []string
+}
 
 // QueryUDPTracker queries a UDP tracker for peers given an info hash
 // This is a standalone function that doesn't require a TorrentFile
@@ -199,4 +211,117 @@ func (c *PeerCollector) Peers() []string {
 // Count returns the number of peers collected
 func (c *PeerCollector) Count() int {
 	return len(c.peers)
+}
+
+// --- HTTP Tracker Support ---
+
+// QueryHTTPTracker queries an HTTP/HTTPS tracker for peers
+func QueryHTTPTracker(trackerURL *url.URL, infoHash, clientID [20]byte, bytesLeft int) (*TrackerResponse, error) {
+	// Try ports in the standard BitTorrent range
+	for port := portRangeStart; port <= portRangeEnd; port++ {
+		announceURL := buildAnnounceURL(trackerURL, infoHash, clientID, port, bytesLeft)
+		resp, err := getTrackerResponse(announceURL)
+		if err == nil {
+			return resp, nil
+		}
+	}
+	return nil, fmt.Errorf("HTTP tracker query failed on all ports")
+}
+
+// buildAnnounceURL builds the URL to call the tracker
+func buildAnnounceURL(u *url.URL, infoHash, clientID [20]byte, port, bytesLeft int) string {
+	params := url.Values{
+		"info_hash":  []string{string(infoHash[:])},
+		"peer_id":    []string{string(clientID[:])},
+		"port":       []string{strconv.Itoa(port)},
+		"uploaded":   []string{"0"},
+		"downloaded": []string{"0"},
+		"left":       []string{strconv.Itoa(bytesLeft)},
+		"compact":    []string{"1"},
+	}
+	result := *u
+	result.RawQuery = params.Encode()
+	return result.String()
+}
+
+// getTrackerResponse performs the HTTP GET announce call
+func getTrackerResponse(announceURL string) (*TrackerResponse, error) {
+	client := &http.Client{Timeout: httpTimeout}
+	res, err := client.Get(announceURL)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tracker returned status %s", res.Status)
+	}
+
+	bencode, err := decode(bufio.NewReader(res.Body), new(bytes.Buffer), false)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseTrackerResponse(bencode)
+}
+
+// parseTrackerResponse parses a bencoded tracker response
+func parseTrackerResponse(ben *bencode) (*TrackerResponse, error) {
+	dic := ben.Dict
+	if dic == nil {
+		return nil, errors.New("tracker response has no dictionary")
+	}
+
+	if failure, ok := dic["failure reason"]; ok {
+		return nil, fmt.Errorf("tracker failure: %s", failure.Str)
+	}
+
+	interval, ok := dic["interval"]
+	if !ok || interval.Int == 0 {
+		return nil, errors.New("tracker response missing interval")
+	}
+
+	peers, ok := dic["peers"]
+	if !ok || peers.Str == "" {
+		return nil, errors.New("tracker response missing peers")
+	}
+
+	peerList, err := parseCompactPeers(peers.Str, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Also parse IPv6 peers if present
+	if peers6, ok := dic["peers6"]; ok && peers6.Str != "" {
+		if parsed, err := parseCompactPeers(peers6.Str, true); err == nil {
+			peerList = append(peerList, parsed...)
+		}
+	}
+
+	return &TrackerResponse{
+		Interval:       interval.Int,
+		PeersAddresses: peerList,
+	}, nil
+}
+
+// parseCompactPeers parses a compact peer list (BEP 23)
+func parseCompactPeers(peers string, ipv6 bool) ([]string, error) {
+	data := []byte(peers)
+	ipSize := net.IPv4len
+	if ipv6 {
+		ipSize = net.IPv6len
+	}
+	peerSize := ipSize + 2
+
+	if len(data)%peerSize != 0 {
+		return nil, fmt.Errorf("invalid peer list length %d (not divisible by %d)", len(data), peerSize)
+	}
+
+	result := make([]string, 0, len(data)/peerSize)
+	for i := 0; i < len(data); i += peerSize {
+		ip := net.IP(data[i : i+ipSize])
+		port := binary.BigEndian.Uint16(data[i+ipSize:])
+		result = append(result, net.JoinHostPort(ip.String(), strconv.Itoa(int(port))))
+	}
+	return result, nil
 }

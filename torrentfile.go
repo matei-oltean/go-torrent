@@ -119,14 +119,14 @@ func (t *TorrentFile) GetPeers(clientID [20]byte) (*TrackerResponse, error) {
 	for _, u := range t.Announce {
 		switch u.Scheme {
 		case "http", "https":
-			return t.Info.getPeersHTTPS(clientID, u)
+			return t.Info.getPeersHTTP(clientID, u)
 		case "udp", "udp4", "udp6":
 			return t.getPeersUDP(clientID)
 		default:
 			continue
 		}
 	}
-	return nil, errors.New("none of the trackers urls could be parsed")
+	return nil, errors.New("no supported tracker found")
 }
 
 // connectToUDP tries to connect to a UDP tracker

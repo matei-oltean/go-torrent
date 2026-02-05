@@ -54,7 +54,7 @@ func TestSetRandomised(t *testing.T) {
 		if !bf.get(idx) {
 			bf.set(idx)
 		} else {
-			bf.unset(idx)
+			bf.Unset(idx)
 		}
 
 		expected[idx] = !expected[idx]
@@ -72,7 +72,7 @@ func TestEmptyBitfield(t *testing.T) {
 		for i := -2; i < 3; i++ {
 			assertGet(t, false, bf, i)
 			bf.set(i)
-			bf.unset(i)
+			bf.Unset(i)
 		}
 	}
 }

@@ -21,8 +21,8 @@ func (bf bitfield) set(index int) {
 	bf[bucket] |= 1 << (7 - index%8)
 }
 
-// unset sets bitfield value at a certain index to false
-func (bf bitfield) unset(index int) {
+// Unset sets bitfield value at a certain index to false
+func (bf bitfield) Unset(index int) {
 	bucket := index / 8
 	if bucket >= len(bf) {
 		return
