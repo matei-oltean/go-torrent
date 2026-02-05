@@ -18,7 +18,6 @@ type TorrentStatus struct {
 	Name        string  `json:"name"`
 	Progress    float64 `json:"progress"`
 	DownSpeed   int64   `json:"downSpeed"`
-	UpSpeed     int64   `json:"upSpeed"`
 	Peers       int     `json:"peers"`
 	Seeds       int     `json:"seeds"`
 	Size        int64   `json:"size"`
@@ -27,9 +26,11 @@ type TorrentStatus struct {
 	Error       string  `json:"error,omitempty"`
 	
 	// Internal fields for pause/resume (not exposed to JSON)
-	torrentPath string
-	magnetLink  string
-	outputPath  string
+	torrentPath    string
+	magnetLink     string
+	outputPath     string
+	lastDownloaded int64     // for speed calculation
+	lastSpeedCheck time.Time // for speed calculation
 }
 
 // DHTNodeInfo represents a DHT node for the frontend
@@ -193,6 +194,17 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 				t.Size = totalBytes
 				if t.Status == "starting" {
 					t.Status = "downloading"
+					t.lastSpeedCheck = time.Now()
+					t.lastDownloaded = downloadedBytes
+				}
+				// Calculate download speed
+				now := time.Now()
+				elapsed := now.Sub(t.lastSpeedCheck).Seconds()
+				if elapsed >= 1.0 {
+					deltaBytes := downloadedBytes - t.lastDownloaded
+					t.DownSpeed = int64(float64(deltaBytes) / elapsed)
+					t.lastSpeedCheck = now
+					t.lastDownloaded = downloadedBytes
 				}
 			}
 			a.mu.Unlock()
@@ -201,6 +213,7 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 		a.mu.Lock()
 		// Check if torrent still exists (might have been removed)
 		if t, ok := a.torrents[id]; ok {
+			t.DownSpeed = 0
 			if err != nil {
 				if err == context.Canceled {
 					t.Status = "paused"
@@ -256,6 +269,17 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 				t.Downloaded = downloadedBytes
 				if t.Status == "starting" {
 					t.Status = "downloading"
+					t.lastSpeedCheck = time.Now()
+					t.lastDownloaded = downloadedBytes
+				}
+				// Calculate download speed
+				now := time.Now()
+				elapsed := now.Sub(t.lastSpeedCheck).Seconds()
+				if elapsed >= 1.0 {
+					deltaBytes := downloadedBytes - t.lastDownloaded
+					t.DownSpeed = int64(float64(deltaBytes) / elapsed)
+					t.lastSpeedCheck = now
+					t.lastDownloaded = downloadedBytes
 				}
 			}
 			a.mu.Unlock()
@@ -264,6 +288,7 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 		a.mu.Lock()
 		// Check if torrent still exists (might have been removed)
 		if t, ok := a.torrents[id]; ok {
+			t.DownSpeed = 0
 			if err != nil {
 				if err == context.Canceled {
 					t.Status = "paused"
@@ -328,6 +353,8 @@ func (a *App) ResumeTorrent(id string) error {
 	a.cancelFuncs[id] = cancel
 	t.Status = "downloading"
 	t.Error = ""
+	t.lastSpeedCheck = time.Now()
+	t.lastDownloaded = t.Downloaded
 	
 	// Store values before unlocking
 	magnetLink := t.magnetLink
@@ -346,6 +373,15 @@ func (a *App) ResumeTorrent(id string) error {
 				t.Progress = float64(completedPieces) / float64(totalPieces) * 100
 				t.Downloaded = downloadedBytes
 				t.Size = totalBytes
+				// Calculate download speed
+				now := time.Now()
+				elapsed := now.Sub(t.lastSpeedCheck).Seconds()
+				if elapsed >= 1.0 {
+					deltaBytes := downloadedBytes - t.lastDownloaded
+					t.DownSpeed = int64(float64(deltaBytes) / elapsed)
+					t.lastSpeedCheck = now
+					t.lastDownloaded = downloadedBytes
+				}
 			}
 			a.mu.Unlock()
 		}
@@ -359,6 +395,7 @@ func (a *App) ResumeTorrent(id string) error {
 		
 		a.mu.Lock()
 		if t, ok := a.torrents[id]; ok {
+			t.DownSpeed = 0
 			if err != nil {
 				if err == context.Canceled {
 					t.Status = "paused"
