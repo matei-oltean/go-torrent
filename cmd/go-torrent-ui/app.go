@@ -50,13 +50,14 @@ type DHTStatus struct {
 
 // App struct
 type App struct {
-	ctx         context.Context
-	torrents    map[string]*TorrentStatus
-	cancelFuncs map[string]context.CancelFunc
-	mu          sync.RWMutex
-	dht         *dht.DHT
-	dhtCtx      context.Context
-	dhtCancel   context.CancelFunc
+	ctx          context.Context
+	torrents     map[string]*TorrentStatus
+	cancelFuncs  map[string]context.CancelFunc
+	mu           sync.RWMutex
+	dht          *dht.DHT
+	dhtCtx       context.Context
+	dhtCancel    context.CancelFunc
+	rarestFirst  bool // Use rarest-first piece selection
 }
 
 // NewApp creates a new App application struct
@@ -209,7 +210,10 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 			}
 			a.mu.Unlock()
 		}
-		err := torrent.DownloadMagnetWithProgress(ctx, magnetLink, outputPath, a.dht, onProgress)
+		err := torrent.DownloadMagnetWithProgress(ctx, magnetLink, outputPath, a.dht, &torrent.DownloadOptions{
+			OnProgress:  onProgress,
+			RarestFirst: a.rarestFirst,
+		})
 		a.mu.Lock()
 		// Check if torrent still exists (might have been removed)
 		if t, ok := a.torrents[id]; ok {
@@ -284,7 +288,10 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 			}
 			a.mu.Unlock()
 		}
-		err := torrent.DownloadWithProgress(ctx, filePath, outputPath, onProgress)
+		err := torrent.DownloadWithProgress(ctx, filePath, outputPath, &torrent.DownloadOptions{
+			OnProgress:  onProgress,
+			RarestFirst: a.rarestFirst,
+		})
 		a.mu.Lock()
 		// Check if torrent still exists (might have been removed)
 		if t, ok := a.torrents[id]; ok {
@@ -385,10 +392,14 @@ func (a *App) ResumeTorrent(id string) error {
 			}
 			a.mu.Unlock()
 		}
+		opts := &torrent.DownloadOptions{
+			OnProgress:  onProgress,
+			RarestFirst: a.rarestFirst,
+		}
 		if magnetLink != "" {
-			err = torrent.DownloadMagnetWithProgress(ctx, magnetLink, outputPath, a.dht, onProgress)
+			err = torrent.DownloadMagnetWithProgress(ctx, magnetLink, outputPath, a.dht, opts)
 		} else if torrentPath != "" {
-			err = torrent.DownloadWithProgress(ctx, torrentPath, outputPath, onProgress)
+			err = torrent.DownloadWithProgress(ctx, torrentPath, outputPath, opts)
 		} else {
 			err = fmt.Errorf("no source available for resume")
 		}
@@ -459,4 +470,19 @@ func (a *App) SelectOutputFolder() (string, error) {
 		return "", err
 	}
 	return selection, nil
+}
+
+// GetRarestFirst returns whether rarest-first piece selection is enabled
+func (a *App) GetRarestFirst() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.rarestFirst
+}
+
+// SetRarestFirst enables or disables rarest-first piece selection
+func (a *App) SetRarestFirst(enabled bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.rarestFirst = enabled
+	log.Printf("Rarest-first piece selection: %v", enabled)
 }

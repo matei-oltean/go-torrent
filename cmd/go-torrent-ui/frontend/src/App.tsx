@@ -49,6 +49,8 @@ declare global {
           SelectOutputFolder(): Promise<string>;
           GetDHTStatus(): Promise<DHTStatus>;
           GetDHTNodes(): Promise<DHTNodeInfo[]>;
+          GetRarestFirst(): Promise<boolean>;
+          SetRarestFirst(enabled: boolean): Promise<void>;
         };
       };
     };
@@ -94,10 +96,36 @@ function App() {
   const [dhtNodes, setDhtNodes] = useState<DHTNodeInfo[]>([]);
   const [dhtNodesLoading, setDhtNodesLoading] = useState(false);
   const [nodeFilter, setNodeFilter] = useState('');
+  const [rarestFirst, setRarestFirst] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
   }, [darkMode]);
+
+  // Load rarest-first setting on startup
+  useEffect(() => {
+    const loadRarestFirst = async () => {
+      try {
+        if (window.go?.main?.App?.GetRarestFirst) {
+          const enabled = await window.go.main.App.GetRarestFirst();
+          setRarestFirst(enabled);
+        }
+      } catch (e) {
+        console.error('Failed to load rarest-first setting:', e);
+      }
+    };
+    loadRarestFirst();
+  }, []);
+
+  const toggleRarestFirst = async () => {
+    try {
+      const newValue = !rarestFirst;
+      await window.go.main.App.SetRarestFirst(newValue);
+      setRarestFirst(newValue);
+    } catch (e) {
+      console.error('Failed to toggle rarest-first:', e);
+    }
+  };
 
   const fetchTorrents = useCallback(async () => {
     try {
@@ -313,6 +341,15 @@ function App() {
               {formatSpeed(totalDown)}
             </span>
           </div>
+
+          {/* Rarest-First Toggle */}
+          <button
+            onClick={toggleRarestFirst}
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-200 hover:bg-[var(--border-strong)] border ${rarestFirst ? 'border-[var(--accent)] bg-[var(--accent-bg)]' : 'border-transparent hover:border-[var(--border)]'}`}
+            title={rarestFirst ? 'Rarest-first selection: ON (healthier swarm)' : 'Rarest-first selection: OFF (faster start)'}
+          >
+            <Sparkles className={`w-4 h-4 ${rarestFirst ? 'text-[var(--accent)]' : ''}`} style={{ color: rarestFirst ? 'var(--accent)' : 'var(--text-secondary)' }} />
+          </button>
 
           {/* Theme Toggle */}
           <button

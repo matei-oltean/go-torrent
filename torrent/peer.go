@@ -348,3 +348,70 @@ func DownloadPieces(hash, clientID [20]byte, address string, pieces chan *Piece,
 		}
 	}
 }
+
+// DownloadPiecesWithQueue downloads pieces using a PieceQueue for rarest-first selection.
+// The done channel signals when the download is complete.
+func DownloadPiecesWithQueue(hash, clientID [20]byte, address string, queue *PieceQueue, results chan<- *Result, done <-chan struct{}) {
+	handshake := Handshake(hash, clientID)
+	peer, err := newPeer(handshake, address)
+	if err != nil {
+		log.Printf("Could not connect to peer at %s: %s", address, err)
+		return
+	}
+	defer func() {
+		queue.UnregisterPeer(peer.bitfield)
+		peer.conn.Close()
+	}()
+	
+	err = peer.startConn()
+	if err != nil {
+		log.Printf("Could not connect to peer at %s: %s", address, err)
+		return
+	}
+	log.Printf("Connected to peer at %s", address)
+	
+	// Register this peer's bitfield for availability tracking
+	queue.RegisterPeer(peer.bitfield)
+
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		
+		// Get the rarest piece this peer can download
+		piece := queue.GetPiece(peer.bitfield)
+		if piece == nil {
+			// No pieces available for this peer right now
+			// Check if download is done or wait a bit
+			select {
+			case <-done:
+				return
+			default:
+				// Small sleep to avoid busy-waiting
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+		}
+
+		res, err := peer.downloadPiece(piece, false)
+		if err != nil {
+			log.Printf("Disconnecting from peer at %s: %s", address, err)
+			queue.Return(piece.Index)
+			return
+		}
+
+		// Check for piece integrity
+		h := sha1.Sum(res)
+		if !bytes.Equal(h[:], piece.Hash[:]) {
+			log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead", piece.Index, piece.Hash, h)
+			queue.Return(piece.Index)
+			continue
+		}
+
+		queue.Complete(piece.Index)
+		peer.conn.Write(Have(piece.Index)) // best-effort, ignore error
+		results <- &Result{Index: piece.Index, Value: res}
+	}
+}

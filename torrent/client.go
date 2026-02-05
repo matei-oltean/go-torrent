@@ -20,6 +20,12 @@ const (
 // ProgressCallback is called during download with progress information
 type ProgressCallback func(completedPieces, totalPieces int, downloadedBytes, totalBytes int64)
 
+// DownloadOptions configures download behavior
+type DownloadOptions struct {
+	RarestFirst bool              // Use rarest-first piece selection (better for swarm health)
+	OnProgress  ProgressCallback  // Progress callback
+}
+
 // fileDescriptor is a file writer plus the remaining bytes to be written
 type fileDescriptor struct {
 	FileWriter *os.File
@@ -37,8 +43,7 @@ func clientID() ([20]byte, error) {
 // from torrent file, a list of peers and a client ID
 // and writes them to the file system. Supports cancellation via context.
 // If state is provided, it will be used to skip already downloaded pieces and track progress.
-// If onProgress is provided, it will be called after each piece completes.
-func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr []string, clientID [20]byte, outDir string, state *DownloadState, onProgress ProgressCallback) error {
+func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr []string, clientID [20]byte, outDir string, state *DownloadState, opts *DownloadOptions) error {
 	fileLen := inf.Length
 	pieceLen := inf.PieceLength
 	numPieces := len(inf.Pieces)
@@ -176,10 +181,8 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 	
 	log.Printf("Resuming download: %d/%d pieces remaining", piecesToDownload, numPieces)
 	
-	// Create chan of pieces to download
-	pieces := make(chan *Piece, piecesToDownload)
-	// Create chan of results to collect
-	results := make(chan *Result)
+	// Build list of pieces to download
+	allPieces := make([]*Piece, numPieces)
 	pos := 0
 	fileIndex := 0
 	for i, hash := range inf.Pieces {
@@ -189,13 +192,10 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 			length = fileLen % pieceLen
 		}
 		
-		// Only queue pieces that aren't already downloaded
-		if !state.IsPieceComplete(i) {
-			pieces <- &Piece{
-				Index:  i,
-				Hash:   hash,
-				Length: length,
-			}
+		allPieces[i] = &Piece{
+			Index:  i,
+			Hash:   hash,
+			Length: length,
 		}
 		
 		pos += length
@@ -207,18 +207,48 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 		pieceToFile[i] = f
 	}
 
-	// create chan to receive the torrent metadata in case we need it
-	info := make(chan *TorrentInfo)
+	// Create chan of results to collect
+	results := make(chan *Result)
+	
+	// done channel signals workers to stop
+	done := make(chan struct{})
+	defer close(done)
 
-	// Create workers to download the pieces
-	for _, peerAddress := range peersAddr {
-		go DownloadPieces(inf.Hash, clientID, peerAddress, pieces, info, results)
+	// Choose piece selection strategy
+	useRarestFirst := opts != nil && opts.RarestFirst
+	
+	if useRarestFirst {
+		// Rarest-first: use PieceQueue
+		queue := NewPieceQueue(allPieces, state.Downloaded)
+		for _, peerAddress := range peersAddr {
+			go DownloadPiecesWithQueue(inf.Hash, clientID, peerAddress, queue, results, done)
+		}
+	} else {
+		// Sequential/random: use channel
+		pieces := make(chan *Piece)
+		info := make(chan *TorrentInfo) // unused but required by DownloadPieces
+		for _, peerAddress := range peersAddr {
+			go DownloadPieces(inf.Hash, clientID, peerAddress, pieces, info, results)
+		}
+		// Send pieces that need downloading
+		go func() {
+			for _, p := range allPieces {
+				if !state.IsPieceComplete(p.Index) {
+					select {
+					case pieces <- p:
+					case <-done:
+						return
+					}
+				}
+			}
+			close(pieces)
+		}()
 	}
 
 	// Parse the results as they come and copy them to file
 	nextNotification := notificationStep
 	completedInSession := 0
-	for done := 1; done <= piecesToDownload; done++ {
+	for completedInSession < piecesToDownload {
 		// Check for cancellation
 		select {
 		case <-ctx.Done():
@@ -261,9 +291,9 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 			totalCompleted := state.CompletedPieces()
 			
 			// Call progress callback if provided
-			if onProgress != nil {
+			if opts != nil && opts.OnProgress != nil {
 				downloadedBytes := min(int64(totalCompleted)*int64(pieceLen), int64(fileLen))
-				onProgress(totalCompleted, numPieces, downloadedBytes, int64(fileLen))
+				opts.OnProgress(totalCompleted, numPieces, downloadedBytes, int64(fileLen))
 			}
 			
 			for p := float64(totalCompleted) / float64(numPieces) * 100; p > float64(nextNotification); nextNotification += notificationStep {
@@ -343,7 +373,7 @@ func Download(torrentPath, outputPath string) error {
 }
 
 // DownloadWithProgress downloads a torrent file with progress callback
-func DownloadWithProgress(ctx context.Context, torrentPath, outputPath string, onProgress ProgressCallback) error {
+func DownloadWithProgress(ctx context.Context, torrentPath, outputPath string, opts *DownloadOptions) error {
 	id, err := clientID()
 	if err != nil {
 		return err
@@ -380,11 +410,11 @@ func DownloadWithProgress(ctx context.Context, torrentPath, outputPath string, o
 	state.SetTorrentPath(torrentPath)
 	state.AddPeers(peers.PeersAddresses)
 	
-	return downloadPiecesWithContext(ctx, t.Info, peers.PeersAddresses, id, outDir, state, onProgress)
+	return downloadPiecesWithContext(ctx, t.Info, peers.PeersAddresses, id, outDir, state, opts)
 }
 
 // DownloadMagnetWithProgress downloads a magnet link with progress callback and shared DHT
-func DownloadMagnetWithProgress(ctx context.Context, magnetLink, outputPath string, sharedDHT *dht.DHT, onProgress ProgressCallback) error {
+func DownloadMagnetWithProgress(ctx context.Context, magnetLink, outputPath string, sharedDHT *dht.DHT, opts *DownloadOptions) error {
 	magnet, err := ParseMagnet(magnetLink)
 	if err != nil {
 		return fmt.Errorf("failed to parse magnet link: %w", err)
@@ -464,7 +494,7 @@ func DownloadMagnetWithProgress(ctx context.Context, magnetLink, outputPath stri
 
 	log.Printf("Total peers: %d", collector.Count())
 
-	return downloadFromPeersWithContext(ctx, magnet.Hash, id, collector.Peers(), outputPath, magnetLink, onProgress)
+	return downloadFromPeersWithContext(ctx, magnet.Hash, id, collector.Peers(), outputPath, magnetLink, opts)
 }
 
 // DownloadMagnetWithContext downloads a torrent from a magnet link using DHT and trackers
@@ -574,7 +604,7 @@ func DownloadMagnet(magnetLink, outputPath string) error {
 
 // downloadFromPeersWithContext fetches metadata from peers and downloads the torrent
 // Supports cancellation via context.
-func downloadFromPeersWithContext(ctx context.Context, infoHash, clientID [20]byte, peers []string, outputPath string, magnetLink string, onProgress ProgressCallback) error {
+func downloadFromPeersWithContext(ctx context.Context, infoHash, clientID [20]byte, peers []string, outputPath string, magnetLink string, opts *DownloadOptions) error {
 	// Try to load existing state for resuming
 	state, err := LoadState(infoHash)
 	if err != nil {
@@ -616,6 +646,6 @@ func downloadFromPeersWithContext(ctx context.Context, infoHash, clientID [20]by
 		state.AddPeers(peers)
 
 		// Download the actual file
-		return downloadPiecesWithContext(ctx, torrentInfo, peers, clientID, outDir, state, onProgress)
+		return downloadPiecesWithContext(ctx, torrentInfo, peers, clientID, outDir, state, opts)
 	}
 }
