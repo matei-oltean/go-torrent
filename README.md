@@ -1,15 +1,38 @@
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/matei-oltean/go-torrent/Go)](https://github.com/matei-oltean/go-torrent/actions?query=workflow%3AGo)
+[![Go](https://github.com/matei-oltean/go-torrent/actions/workflows/go.yml/badge.svg)](https://github.com/matei-oltean/go-torrent/actions/workflows/go.yml)
 
-Torrent client written in Go currently being written according to the [original specifications](https://www.bittorrent.org/beps/bep_0003.html).
+# go-torrent
 
-To use:
-* Clone the repository with `https://github.com/matei-oltean/go-torrent.git` (or `go get github.com/matei-oltean/go-torrent`)
-* Go to the cloned repository (`cd go-torrent`)
-* Build it `go build`
-* Launch it with `./go-torrent -f path_to_torrent_file`. You can also force the name of the output file by adding `-o path_to_output`; if not supplied, the file will be downloaded in the same folder as the torrent file with the name supplied by the torrent file.
+A BitTorrent client written in Go, implementing [BEP 3](https://www.bittorrent.org/beps/bep_0003.html) (core protocol) with support for:
+- HTTP and UDP trackers
+- Multi-file torrents
+- Magnet link parsing
+- Extension protocol (BEP 10) for metadata download
 
-Next steps:
-* Clean up the code (package separation, add tests, etc.)
-* Add support for magnet links
-* Add support for seeding
-* Add a GUI
+## Installation
+
+```bash
+git clone https://github.com/matei-oltean/go-torrent.git
+cd go-torrent
+go build
+```
+
+## Usage
+
+```bash
+# Download from a .torrent file
+./go-torrent -f path/to/file.torrent
+
+# Specify output directory
+./go-torrent -f path/to/file.torrent -o /path/to/output
+```
+
+## Roadmap
+
+- [x] Core BitTorrent protocol (BEP 3)
+- [x] HTTP/UDP tracker support
+- [x] Multi-file torrents
+- [x] Extension protocol (BEP 10)
+- [ ] DHT (BEP 5) - *in progress*
+- [ ] Magnet link downloads
+- [ ] Seeding support
+- [ ] GUI
