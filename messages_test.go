@@ -77,3 +77,36 @@ func TestReadMessage(t *testing.T) {
 		}
 	}
 }
+
+func TestPortMessage(t *testing.T) {
+	msg := PortMessage(6881)
+	// Should be: length(4) + type(1) + port(2) = 7 bytes
+	if len(msg) != 7 {
+		t.Errorf("Expected 7 bytes, got %d", len(msg))
+	}
+
+	// Parse it back
+	length := binary.BigEndian.Uint32(msg[0:4])
+	if length != 3 { // type(1) + port(2)
+		t.Errorf("Expected length 3, got %d", length)
+	}
+
+	if msg[4] != byte(MPort) {
+		t.Errorf("Expected message type %d, got %d", MPort, msg[4])
+	}
+
+	port, err := ParsePortMessage(msg[5:])
+	if err != nil {
+		t.Fatalf("ParsePortMessage failed: %v", err)
+	}
+	if port != 6881 {
+		t.Errorf("Expected port 6881, got %d", port)
+	}
+}
+
+func TestParsePortMessageInvalid(t *testing.T) {
+	_, err := ParsePortMessage([]byte{0x1A}) // Only 1 byte
+	if err == nil {
+		t.Error("Expected error for invalid payload length")
+	}
+}

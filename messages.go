@@ -20,6 +20,7 @@ const (
 	MRequest
 	MPiece
 	MCancel
+	MPort     MessageType = 9 // DHT port (BEP 5)
 	MExtended MessageType = 20
 )
 
@@ -147,4 +148,19 @@ func RequestMetaData(extID uint8, index int) []byte {
 	msgBuf[0] = extID
 	copy(msgBuf[1:], msg)
 	return (&Message{MExtended, msgBuf}).serialise()
+}
+
+// PortMessage creates a PORT message to advertise our DHT port (BEP 5)
+func PortMessage(port uint16) []byte {
+	payload := make([]byte, 2)
+	binary.BigEndian.PutUint16(payload, port)
+	return (&Message{MPort, payload}).serialise()
+}
+
+// ParsePortMessage extracts the DHT port from a PORT message payload
+func ParsePortMessage(payload []byte) (uint16, error) {
+	if len(payload) != 2 {
+		return 0, fmt.Errorf("invalid PORT message length: %d", len(payload))
+	}
+	return binary.BigEndian.Uint16(payload), nil
 }
