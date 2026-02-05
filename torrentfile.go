@@ -206,7 +206,8 @@ func (t *TorrentFile) getPeersUDP(clientID [20]byte) (*TrackerResponse, error) {
 			connID, err := connectToUDP(conn)
 			if err != nil {
 				// continue on a timeout
-				if err, ok := err.(net.Error); ok && err.Timeout() {
+				var netErr net.Error
+				if errors.As(err, &netErr) && netErr.Timeout() {
 					conns = append(conns, uConn)
 				}
 				continue

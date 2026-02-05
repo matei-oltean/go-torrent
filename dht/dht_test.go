@@ -276,3 +276,147 @@ func TestNodeInfoString(t *testing.T) {
 		t.Errorf("String should contain node ID prefix: %s", s)
 	}
 }
+
+// DHT server tests
+
+func TestDHTNew(t *testing.T) {
+	dht, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if dht.ID == (NodeID{}) {
+		t.Error("DHT should have a node ID")
+	}
+	if dht.routingTable == nil {
+		t.Error("DHT should have a routing table")
+	}
+	if dht.transactions == nil {
+		t.Error("DHT should have a transaction manager")
+	}
+}
+
+func TestDHTGenerateToken(t *testing.T) {
+	dht, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	token1 := dht.generateToken()
+	token2 := dht.generateToken()
+
+	if len(token1) == 0 {
+		t.Error("Token should not be empty")
+	}
+	if token1 == token2 {
+		t.Error("Tokens should be unique")
+	}
+}
+
+func TestDHTRoutingTableIntegration(t *testing.T) {
+	dht, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	// Add some nodes to the routing table
+	nodes := []*NodeInfo{
+		{ID: NodeID{1}, Addr: &net.UDPAddr{IP: net.IPv4(192, 168, 1, 1), Port: 6881}},
+		{ID: NodeID{2}, Addr: &net.UDPAddr{IP: net.IPv4(192, 168, 1, 2), Port: 6882}},
+	}
+	for _, n := range nodes {
+		dht.routingTable.AddNode(n)
+	}
+
+	// Verify nodes are in routing table
+	if dht.routingTable.Size() != 2 {
+		t.Errorf("Expected 2 nodes, got %d", dht.routingTable.Size())
+	}
+
+	// Test compact encoding of nodes
+	for _, n := range nodes {
+		compact, err := n.CompactIPv4()
+		if err != nil {
+			t.Errorf("CompactIPv4 failed: %v", err)
+		}
+		// Each node: 20 bytes ID + 4 bytes IP + 2 bytes port = 26 bytes
+		if len(compact) != 26 {
+			t.Errorf("Expected 26 bytes, got %d", len(compact))
+		}
+	}
+}
+
+func TestDHTPeerStore(t *testing.T) {
+	dht, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	infoHash := [20]byte{0xDE, 0xAD, 0xBE, 0xEF}
+
+	// Initially empty
+	dht.peerStoreMu.RLock()
+	peers := dht.peerStore[infoHash]
+	dht.peerStoreMu.RUnlock()
+	if len(peers) != 0 {
+		t.Error("Peer store should be empty initially")
+	}
+
+	// Add a peer
+	dht.peerStoreMu.Lock()
+	dht.peerStore[infoHash] = []string{"192.168.1.1:6881"}
+	dht.peerStoreMu.Unlock()
+
+	dht.peerStoreMu.RLock()
+	peers = dht.peerStore[infoHash]
+	dht.peerStoreMu.RUnlock()
+	if len(peers) != 1 {
+		t.Error("Should have 1 peer")
+	}
+}
+
+func TestParsePeerList(t *testing.T) {
+	// Create compact peer data: 192.168.1.1:6881
+	data := string([]byte{192, 168, 1, 1, 0x1A, 0xE1})
+	peers := parsePeerList(data)
+	if len(peers) != 1 {
+		t.Fatalf("Expected 1 peer, got %d", len(peers))
+	}
+	if peers[0] != "192.168.1.1:6881" {
+		t.Errorf("Expected 192.168.1.1:6881, got %s", peers[0])
+	}
+}
+
+func TestParsePeerListMultiple(t *testing.T) {
+	// Create compact peer data: 2 peers
+	data := string([]byte{
+		192, 168, 1, 1, 0x1A, 0xE1, // 192.168.1.1:6881
+		10, 0, 0, 1, 0x1A, 0xE2, // 10.0.0.1:6882
+	})
+	peers := parsePeerList(data)
+	if len(peers) != 2 {
+		t.Fatalf("Expected 2 peers, got %d", len(peers))
+	}
+	if peers[0] != "192.168.1.1:6881" {
+		t.Errorf("Expected 192.168.1.1:6881, got %s", peers[0])
+	}
+	if peers[1] != "10.0.0.1:6882" {
+		t.Errorf("Expected 10.0.0.1:6882, got %s", peers[1])
+	}
+}
+
+func TestRandomIDInBucket(t *testing.T) {
+	dht, err := New()
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	// Generate IDs for different buckets and verify distance
+	for _, bucketIdx := range []int{0, 50, 100, 159} {
+		target := dht.randomIDInBucket(bucketIdx)
+		dist := Distance(dht.ID, target)
+		gotBucket := dist.LeadingZeros()
+		if gotBucket != bucketIdx {
+			t.Errorf("Bucket %d: expected leading zeros %d, got %d", bucketIdx, bucketIdx, gotBucket)
+		}
+	}
+}

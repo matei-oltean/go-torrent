@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -422,14 +421,9 @@ func decodeBencodeValue(reader *bufio.Reader) (any, error) {
 	}
 }
 
-// GenerateToken creates a random token for announce validation
+// GenerateToken creates a random token for announce validation (8 hex chars)
 func GenerateToken() (string, error) {
-	buf := make([]byte, 4)
-	_, err := rand.Read(buf)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf), nil
+	return rand.Text()[:8], nil
 }
 
 // ExtractNodeID extracts the node ID from a KRPC message

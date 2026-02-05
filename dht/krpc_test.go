@@ -205,7 +205,7 @@ func TestGenerateToken(t *testing.T) {
 	if token1 == token2 {
 		t.Error("Tokens should be unique")
 	}
-	if len(token1) != 8 { // 4 bytes = 8 hex chars
+	if len(token1) != 8 {
 		t.Errorf("Expected token length 8, got %d", len(token1))
 	}
 }
