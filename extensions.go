@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"io/ioutil"
+	"io"
 )
 
 // Extension messages
@@ -64,6 +64,6 @@ func ParseExtensionsMetadata(payload []byte) ([]byte, int, error) {
 	if !ok {
 		return nil, 0, errors.New("payload missing \"piece\" entry")
 	}
-	p, err := ioutil.ReadAll(br)
+	p, err := io.ReadAll(br)
 	return p, index.Int, err
 }

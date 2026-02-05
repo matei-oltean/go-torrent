@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -25,11 +25,11 @@ func TestParseMagnet(t *testing.T) {
 
 	if writeMagnet {
 		serialised, _ := json.MarshalIndent(magnet, "", " ")
-		ioutil.WriteFile(referencePath, serialised, 0644)
+		os.WriteFile(referencePath, serialised, 0644)
 	}
 
 	expected := &Magnet{}
-	reference, err := ioutil.ReadFile(referencePath)
+	reference, err := os.ReadFile(referencePath)
 	if err != nil {
 		t.Error(err)
 		return
