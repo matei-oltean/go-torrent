@@ -116,6 +116,13 @@ func (s *DownloadState) MarkPieceComplete(index int) {
 	s.Downloaded.set(index)
 }
 
+// ClearPiece marks a piece as not downloaded (for re-verification)
+func (s *DownloadState) ClearPiece(index int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Downloaded.Unset(index)
+}
+
 // IsPieceComplete checks if a piece has been downloaded
 func (s *DownloadState) IsPieceComplete(index int) bool {
 	s.mu.RLock()

@@ -3,6 +3,7 @@ package torrent
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha1"
 	"fmt"
 	"log"
 	"net"
@@ -106,6 +107,53 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 			}
 		}
 		fWriters[i] = &fileDescriptor{fd, f.Length}
+	}
+
+	// If resuming, verify completed pieces against file data
+	if resuming {
+		log.Printf("Verifying %d completed pieces...", state.CompletedPieces())
+		invalidated := 0
+		for i, expectedHash := range inf.Pieces {
+			if !state.IsPieceComplete(i) {
+				continue
+			}
+			length := pieceLen
+			if i == numPieces-1 && fileLen%pieceLen != 0 {
+				length = fileLen % pieceLen
+			}
+			pieceData := make([]byte, length)
+			pieceStart := i * pieceLen
+			// Read piece data from file(s)
+			for fi, f := range files {
+				fileEnd := f.CumStart + f.Length
+				if pieceStart+length <= f.CumStart || pieceStart >= fileEnd {
+					continue
+				}
+				fd, ok := fWriters[fi]
+				if !ok {
+					continue
+				}
+				resOffset := 0
+				fileOffset := pieceStart - f.CumStart
+				if fileOffset < 0 {
+					resOffset = -fileOffset
+					fileOffset = 0
+				}
+				end := length
+				if end+pieceStart > fileEnd {
+					end = fileEnd - pieceStart
+				}
+				fd.FileWriter.ReadAt(pieceData[resOffset:end], int64(fileOffset))
+			}
+			h := sha1.Sum(pieceData)
+			if h != expectedHash {
+				state.ClearPiece(i)
+				invalidated++
+			}
+		}
+		if invalidated > 0 {
+			log.Printf("Invalidated %d corrupted pieces", invalidated)
+		}
 	}
 	
 	// Count pieces we need to download (skip already completed ones)
