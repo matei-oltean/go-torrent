@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strconv"
 )
 
@@ -136,6 +138,50 @@ func decode(reader *bufio.Reader, buff *bytes.Buffer, infoMap bool) (*bencode, e
 		}
 		ben.Str = string(buf)
 		return ben, nil
+	}
+}
+
+// Encode encodes a bencode object to a byte slice
+func Encode(ben *bencode) []byte {
+	var buf bytes.Buffer
+	encodeTo(&buf, ben)
+	return buf.Bytes()
+}
+
+// encodeTo writes the bencoded representation to a buffer
+func encodeTo(buf *bytes.Buffer, ben *bencode) {
+	switch {
+	case ben.Dict != nil:
+		buf.WriteByte('d')
+		// Keys must be sorted in lexicographical order
+		keys := slices.Sorted(maps.Keys(ben.Dict))
+		for _, k := range keys {
+			v := ben.Dict[k]
+			// Write key as string
+			buf.WriteString(strconv.Itoa(len(k)))
+			buf.WriteByte(':')
+			buf.WriteString(k)
+			// Write value
+			encodeTo(buf, &v)
+		}
+		buf.WriteByte('e')
+	case ben.List != nil:
+		buf.WriteByte('l')
+		for i := range ben.List {
+			encodeTo(buf, &ben.List[i])
+		}
+		buf.WriteByte('e')
+	case ben.Str != "":
+		buf.WriteString(strconv.Itoa(len(ben.Str)))
+		buf.WriteByte(':')
+		buf.WriteString(ben.Str)
+	case ben.Int != 0:
+		buf.WriteByte('i')
+		buf.WriteString(strconv.Itoa(ben.Int))
+		buf.WriteByte('e')
+	default:
+		// Zero int or empty - encode as int 0
+		buf.WriteString("i0e")
 	}
 }
 
