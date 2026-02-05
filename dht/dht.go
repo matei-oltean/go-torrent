@@ -34,6 +34,7 @@ type DHT struct {
 	transactions *TransactionManager
 	peerStore    map[[20]byte][]string // info_hash -> peer addresses
 	peerStoreMu  sync.RWMutex
+	nodesFile    string // path to persist routing table
 
 	// Channels for communication
 	shutdown chan struct{}
@@ -52,12 +53,20 @@ func New() (*DHT, error) {
 		routingTable: NewRoutingTable(nodeID),
 		transactions: NewTransactionManager(),
 		peerStore:    make(map[[20]byte][]string),
+		nodesFile:    DefaultNodesFile,
 		shutdown:     make(chan struct{}),
 	}, nil
 }
 
 // Start starts the DHT node
 func (d *DHT) Start(ctx context.Context) error {
+	// Load persisted nodes
+	if loaded, err := d.routingTable.LoadNodes(d.nodesFile); err != nil {
+		log.Printf("DHT: failed to load nodes: %v", err)
+	} else if loaded > 0 {
+		log.Printf("DHT: loaded %d nodes from %s", loaded, d.nodesFile)
+	}
+
 	// Try to bind to a port in the standard range
 	var conn *net.UDPConn
 	var err error
@@ -89,6 +98,18 @@ func (d *DHT) Stop() {
 		d.conn.Close()
 	}
 	d.wg.Wait()
+
+	// Save routing table
+	if err := d.routingTable.SaveNodes(d.nodesFile); err != nil {
+		log.Printf("DHT: failed to save nodes: %v", err)
+	} else if size := d.routingTable.Size(); size > 0 {
+		log.Printf("DHT: saved %d nodes to %s", size, d.nodesFile)
+	}
+}
+
+// SetNodesFile sets the path for persisting routing table nodes
+func (d *DHT) SetNodesFile(path string) {
+	d.nodesFile = path
 }
 
 // Port returns the port the DHT is listening on
