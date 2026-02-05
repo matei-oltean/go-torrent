@@ -286,6 +286,12 @@ func Download(torrentPath, outputPath string) error {
 // DownloadMagnetWithContext downloads a torrent from a magnet link using DHT and trackers
 // Supports cancellation via context.
 func DownloadMagnetWithContext(ctx context.Context, magnetLink, outputPath string) error {
+	return DownloadMagnetWithDHT(ctx, magnetLink, outputPath, nil)
+}
+
+// DownloadMagnetWithDHT downloads a torrent from a magnet link using an optional shared DHT node.
+// If sharedDHT is nil, an ephemeral DHT node is created for this download.
+func DownloadMagnetWithDHT(ctx context.Context, magnetLink, outputPath string, sharedDHT *dht.DHT) error {
 	magnet, err := ParseMagnet(magnetLink)
 	if err != nil {
 		return fmt.Errorf("failed to parse magnet link: %w", err)
@@ -316,37 +322,43 @@ func DownloadMagnetWithContext(ctx context.Context, magnetLink, outputPath strin
 	dhtCtx, dhtCancel := context.WithCancel(ctx)
 	defer dhtCancel()
 
-	d, err = dht.New()
-	if err != nil {
-		log.Printf("DHT: failed to create: %v", err)
+	if sharedDHT != nil {
+		// Reuse shared DHT node
+		d = sharedDHT
+		log.Printf("DHT: using shared node on port %d", d.Port())
 	} else {
-		defer d.Stop()
-
-		if err := d.Start(dhtCtx); err != nil {
-			log.Printf("DHT: failed to start: %v", err)
-			d = nil
+		d, err = dht.New()
+		if err != nil {
+			log.Printf("DHT: failed to create: %v", err)
 		} else {
-			log.Printf("DHT: started, bootstrapping...")
-			d.Bootstrap()
+			defer d.Stop()
 
-			// Add magnet peer addresses to DHT routing table
-			for _, addr := range magnet.PeerAddresses {
-				if udpAddr, err := net.ResolveUDPAddr("udp", addr); err == nil {
-					// We don't know the node ID, so we can't add to routing table directly
-					// But we can ping them to discover their ID
-					go d.Ping(udpAddr)
-				}
-			}
-
-			log.Printf("DHT: searching for peers...")
-			dhtPeers, err := d.GetPeers(magnet.Hash)
-			if err != nil {
-				log.Printf("DHT: get_peers failed: %v", err)
+			if err := d.Start(dhtCtx); err != nil {
+				log.Printf("DHT: failed to start: %v", err)
+				d = nil
 			} else {
-				added := collector.Add(dhtPeers, "DHT")
-				if added > 0 {
-					log.Printf("Added %d peers from DHT", added)
-				}
+				log.Printf("DHT: started, bootstrapping...")
+				d.Bootstrap()
+			}
+		}
+	}
+
+	if d != nil {
+		// Add magnet peer addresses to DHT routing table
+		for _, addr := range magnet.PeerAddresses {
+			if udpAddr, err := net.ResolveUDPAddr("udp", addr); err == nil {
+				go d.Ping(udpAddr)
+			}
+		}
+
+		log.Printf("DHT: searching for peers...")
+		dhtPeers, err := d.GetPeers(magnet.Hash)
+		if err != nil {
+			log.Printf("DHT: get_peers failed: %v", err)
+		} else {
+			added := collector.Add(dhtPeers, "DHT")
+			if added > 0 {
+				log.Printf("Added %d peers from DHT", added)
 			}
 		}
 	}

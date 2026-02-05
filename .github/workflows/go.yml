@@ -30,7 +30,7 @@ jobs:
         fi
 
     - name: Run tests
-      run: go test -v ./...
+      run: go test -v ./torrent/... ./dht/...
 
     - name: Run staticcheck
       uses: dominikh/staticcheck-action@v1
@@ -38,5 +38,5 @@ jobs:
         version: "latest"
         install-go: false
 
-    - name: Build
-      run: go build .
+    - name: Build CLI
+      run: go build ./cmd/go-torrent

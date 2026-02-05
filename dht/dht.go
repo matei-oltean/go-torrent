@@ -16,6 +16,7 @@ const (
 	MaxPort           = 6889
 	MaxPacketSize     = 1500
 	BootstrapInterval = 5 * time.Minute
+	SaveInterval      = 2 * time.Minute
 )
 
 // Bootstrap nodes - well-known DHT entry points
@@ -23,6 +24,9 @@ var BootstrapNodes = []string{
 	"router.bittorrent.com:6881",
 	"router.utorrent.com:6881",
 	"dht.transmissionbt.com:6881",
+	"dht.libtorrent.org:25401",
+	"router.bitcomet.com:6881",
+	"dht.aelitis.com:6881",
 }
 
 // DHT represents a DHT node
@@ -71,8 +75,8 @@ func (d *DHT) Start(ctx context.Context) error {
 	var conn *net.UDPConn
 	var err error
 	for port := DefaultPort; port <= MaxPort; port++ {
-		addr := &net.UDPAddr{Port: port}
-		conn, err = net.ListenUDP("udp", addr)
+		addr := &net.UDPAddr{IP: net.IPv4zero, Port: port}
+		conn, err = net.ListenUDP("udp4", addr)
 		if err == nil {
 			d.port = port
 			break
@@ -158,13 +162,13 @@ func (d *DHT) readLoop(ctx context.Context) {
 	}
 }
 
-// bootstrapLoop periodically refreshes the routing table
+// bootstrapLoop periodically refreshes the routing table and saves nodes
 func (d *DHT) bootstrapLoop(ctx context.Context) {
-	// Initial bootstrap
-	d.Bootstrap()
+	refreshTicker := time.NewTicker(BootstrapInterval)
+	defer refreshTicker.Stop()
 
-	ticker := time.NewTicker(BootstrapInterval)
-	defer ticker.Stop()
+	saveTicker := time.NewTicker(SaveInterval)
+	defer saveTicker.Stop()
 
 	for {
 		select {
@@ -172,7 +176,21 @@ func (d *DHT) bootstrapLoop(ctx context.Context) {
 			return
 		case <-d.shutdown:
 			return
-		case <-ticker.C:
+		case <-saveTicker.C:
+			// Periodically save routing table
+			if size := d.routingTable.Size(); size > 0 {
+				if err := d.routingTable.SaveNodes(d.nodesFile); err != nil {
+					log.Printf("DHT: periodic save failed: %v", err)
+				} else {
+					log.Printf("DHT: saved %d nodes", size)
+				}
+			}
+			// Re-bootstrap if we have very few nodes
+			if d.routingTable.Size() < K {
+				log.Printf("DHT: low node count (%d), re-bootstrapping...", d.routingTable.Size())
+				d.Bootstrap()
+			}
+		case <-refreshTicker.C:
 			// Refresh stale buckets
 			stale := d.routingTable.StaleBuckets()
 			for _, idx := range stale {
@@ -296,17 +314,21 @@ func (d *DHT) Ping(addr *net.UDPAddr) (*Message, error) {
 	query := EncodePing(txID, d.ID)
 
 	pq := d.transactions.AddPending(txID, MethodPing, addr)
-	_, err := d.conn.WriteToUDP(query, addr)
+	n, err := d.conn.WriteToUDP(query, addr)
 	if err != nil {
 		d.transactions.GetPending(txID) // Remove pending
+		log.Printf("DHT: ping send error to %s: %v", addr, err)
 		return nil, err
 	}
+	log.Printf("DHT: sent ping (%d bytes) to %s", n, addr)
 
 	select {
 	case resp := <-pq.ResponseChan:
+		log.Printf("DHT: got ping response from %s", addr)
 		return resp, nil
 	case <-time.After(QueryTimeout):
 		d.transactions.GetPending(txID) // Remove pending
+		log.Printf("DHT: ping timeout for %s", addr)
 		return nil, fmt.Errorf("ping timeout")
 	}
 }
@@ -443,17 +465,21 @@ func (d *DHT) getPeersQuery(addr *net.UDPAddr, infoHash [20]byte) ([]string, []*
 	}
 }
 
-// Bootstrap connects to well-known DHT nodes
+// Bootstrap connects to well-known DHT nodes and waits for initial population
 func (d *DHT) Bootstrap() {
 	log.Printf("DHT: bootstrapping with %d nodes", len(BootstrapNodes))
 
+	var wg sync.WaitGroup
 	for _, addrStr := range BootstrapNodes {
 		addr, err := net.ResolveUDPAddr("udp", addrStr)
 		if err != nil {
 			continue
 		}
 
+		wg.Add(1)
 		go func(a *net.UDPAddr) {
+			defer wg.Done()
+
 			// Ping the bootstrap node
 			resp, err := d.Ping(a)
 			if err != nil {
@@ -475,6 +501,8 @@ func (d *DHT) Bootstrap() {
 			d.FindNode(d.ID)
 		}(addr)
 	}
+	wg.Wait()
+	log.Printf("DHT: bootstrap complete, %d nodes in routing table", d.routingTable.Size())
 }
 
 // encodeNodes encodes a slice of nodes to compact format

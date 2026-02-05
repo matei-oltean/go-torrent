@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
+	"github.com/matei-oltean/go-torrent/dht"
 	"github.com/matei-oltean/go-torrent/torrent"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -30,12 +32,30 @@ type TorrentStatus struct {
 	outputPath  string
 }
 
+// DHTNodeInfo represents a DHT node for the frontend
+type DHTNodeInfo struct {
+	ID       string `json:"id"`
+	Address  string `json:"address"`
+	LastSeen string `json:"lastSeen"`
+}
+
+// DHTStatus represents the DHT status for the frontend
+type DHTStatus struct {
+	Running   bool   `json:"running"`
+	NodeID    string `json:"nodeId"`
+	Port      int    `json:"port"`
+	NodeCount int    `json:"nodeCount"`
+}
+
 // App struct
 type App struct {
 	ctx         context.Context
 	torrents    map[string]*TorrentStatus
 	cancelFuncs map[string]context.CancelFunc
 	mu          sync.RWMutex
+	dht         *dht.DHT
+	dhtCtx      context.Context
+	dhtCancel   context.CancelFunc
 }
 
 // NewApp creates a new App application struct
@@ -50,6 +70,81 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	log.Println("Go Torrent UI started")
+
+	// Start DHT at application startup
+	a.startDHT()
+}
+
+// shutdown is called when the app is closing
+func (a *App) shutdown(ctx context.Context) {
+	a.stopDHT()
+}
+
+// startDHT creates and starts the DHT node
+func (a *App) startDHT() {
+	d, err := dht.New()
+	if err != nil {
+		log.Printf("DHT: failed to create: %v", err)
+		return
+	}
+
+	a.dhtCtx, a.dhtCancel = context.WithCancel(context.Background())
+	if err := d.Start(a.dhtCtx); err != nil {
+		log.Printf("DHT: failed to start: %v", err)
+		a.dhtCancel()
+		return
+	}
+
+	a.dht = d
+	log.Printf("DHT: started on port %d", d.Port())
+
+	// Bootstrap in background so the UI isn't blocked
+	go func() {
+		d.Bootstrap()
+		if d.RoutingTable().Size() == 0 {
+			log.Println("DHT: no bootstrap nodes reachable — UDP port 6881 may be blocked by firewall")
+		}
+	}()
+}
+
+// stopDHT gracefully stops the DHT node
+func (a *App) stopDHT() {
+	if a.dht != nil {
+		a.dhtCancel()
+		a.dht.Stop()
+		a.dht = nil
+		log.Println("DHT: stopped")
+	}
+}
+
+// GetDHTStatus returns the current DHT status
+func (a *App) GetDHTStatus() DHTStatus {
+	if a.dht == nil {
+		return DHTStatus{Running: false}
+	}
+	return DHTStatus{
+		Running:   true,
+		NodeID:    fmt.Sprintf("%x", a.dht.ID),
+		Port:      a.dht.Port(),
+		NodeCount: a.dht.RoutingTable().Size(),
+	}
+}
+
+// GetDHTNodes returns the list of known DHT nodes
+func (a *App) GetDHTNodes() []DHTNodeInfo {
+	if a.dht == nil {
+		return nil
+	}
+	nodes := a.dht.RoutingTable().AllNodes()
+	result := make([]DHTNodeInfo, len(nodes))
+	for i, n := range nodes {
+		result[i] = DHTNodeInfo{
+			ID:       fmt.Sprintf("%x", n.ID),
+			Address:  n.Addr.String(),
+			LastSeen: n.LastSeen.Format(time.RFC3339),
+		}
+	}
+	return result
 }
 
 // GetTorrents returns all torrents
@@ -89,7 +184,7 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 
 	// Start download in background
 	go func() {
-		err := torrent.DownloadMagnetWithContext(ctx, magnetLink, outputPath)
+		err := torrent.DownloadMagnetWithDHT(ctx, magnetLink, outputPath, a.dht)
 		a.mu.Lock()
 		// Check if torrent still exists (might have been removed)
 		if t, ok := a.torrents[id]; ok {
@@ -220,7 +315,7 @@ func (a *App) ResumeTorrent(id string) error {
 	go func() {
 		var err error
 		if magnetLink != "" {
-			err = torrent.DownloadMagnetWithContext(ctx, magnetLink, outputPath)
+			err = torrent.DownloadMagnetWithDHT(ctx, magnetLink, outputPath, a.dht)
 		} else if torrentPath != "" {
 			err = torrent.DownloadWithContext(ctx, torrentPath, outputPath)
 		} else {

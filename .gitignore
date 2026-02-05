@@ -23,6 +23,7 @@
 # Wails / Frontend
 cmd/go-torrent-ui/frontend/node_modules/
 cmd/go-torrent-ui/frontend/dist/
+cmd/go-torrent-ui/frontend/wailsjs/
 cmd/go-torrent-ui/build/bin/
 
 # IDE

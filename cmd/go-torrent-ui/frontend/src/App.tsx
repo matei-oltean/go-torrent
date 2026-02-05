@@ -3,7 +3,7 @@ import {
   Sun, Moon, Plus, Link2, Trash2, Download, Users, 
   AlertCircle, CheckCircle2, Loader2, File, FolderOpen, 
   Clipboard, ChevronDown, Pause, Play,
-  Zap, Clock, HardDrive, Sparkles, X
+  Zap, Clock, HardDrive, Sparkles, X, Globe, Copy, Search, RefreshCw
 } from 'lucide-react';
 import './style.css';
 
@@ -21,6 +21,19 @@ interface TorrentStatus {
   error?: string;
 }
 
+interface DHTStatus {
+  running: boolean;
+  nodeId: string;
+  port: number;
+  nodeCount: number;
+}
+
+interface DHTNodeInfo {
+  id: string;
+  address: string;
+  lastSeen: string;
+}
+
 declare global {
   interface Window {
     go: {
@@ -34,6 +47,8 @@ declare global {
           ResumeTorrent(id: string): Promise<void>;
           SelectTorrentFile(): Promise<string>;
           SelectOutputFolder(): Promise<string>;
+          GetDHTStatus(): Promise<DHTStatus>;
+          GetDHTNodes(): Promise<DHTNodeInfo[]>;
         };
       };
     };
@@ -74,6 +89,11 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dhtStatus, setDhtStatus] = useState<DHTStatus>({ running: false, nodeId: '', port: 0, nodeCount: 0 });
+  const [showDHTPanel, setShowDHTPanel] = useState(false);
+  const [dhtNodes, setDhtNodes] = useState<DHTNodeInfo[]>([]);
+  const [dhtNodesLoading, setDhtNodesLoading] = useState(false);
+  const [nodeFilter, setNodeFilter] = useState('');
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -95,6 +115,56 @@ function App() {
     const interval = setInterval(fetchTorrents, 1000);
     return () => clearInterval(interval);
   }, [fetchTorrents]);
+
+  // Fetch DHT status periodically
+  useEffect(() => {
+    const fetchDHT = async () => {
+      try {
+        if (window.go?.main?.App?.GetDHTStatus) {
+          const status = await window.go.main.App.GetDHTStatus();
+          setDhtStatus(status);
+        }
+      } catch (e) {
+        console.error('Failed to fetch DHT status:', e);
+      }
+    };
+    fetchDHT();
+    const interval = setInterval(fetchDHT, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleShowDHTNodes = async () => {
+    if (showDHTPanel) {
+      setShowDHTPanel(false);
+      return;
+    }
+    setDhtNodesLoading(true);
+    setShowDHTPanel(true);
+    try {
+      if (window.go?.main?.App?.GetDHTNodes) {
+        const nodes = await window.go.main.App.GetDHTNodes();
+        setDhtNodes(nodes || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch DHT nodes:', e);
+    } finally {
+      setDhtNodesLoading(false);
+    }
+  };
+
+  const refreshDHTNodes = async () => {
+    setDhtNodesLoading(true);
+    try {
+      if (window.go?.main?.App?.GetDHTNodes) {
+        const nodes = await window.go.main.App.GetDHTNodes();
+        setDhtNodes(nodes || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch DHT nodes:', e);
+    } finally {
+      setDhtNodesLoading(false);
+    }
+  };
 
   const handleSelectTorrentFile = async () => {
     try {
@@ -366,10 +436,20 @@ function App() {
         style={{ padding: '0 24px', fontFamily: "'JetBrains Mono', monospace" }}
       >
         <div className="flex items-center" style={{ gap: '20px' }}>
-          <span className="flex items-center font-medium" style={{ gap: '8px', color: 'var(--accent)' }}>
-            <Zap className="w-3.5 h-3.5" />
+          <button
+            onClick={handleShowDHTNodes}
+            className="flex items-center font-medium transition-colors hover:opacity-80"
+            style={{ gap: '8px', color: dhtStatus.running ? 'var(--accent)' : 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            title={dhtStatus.running ? `DHT running on port ${dhtStatus.port}` : 'DHT offline'}
+          >
+            <Globe className={`w-3.5 h-3.5 ${dhtStatus.running ? 'animate-pulse' : ''}`} />
             DHT
-          </span>
+            {dhtStatus.running && (
+              <span className="rounded-md text-[10px] font-bold" style={{ padding: '1px 6px', background: 'var(--accent-glow)', color: 'var(--accent)' }}>
+                {dhtStatus.nodeCount}
+              </span>
+            )}
+          </button>
           <span style={{ color: 'var(--text-muted)' }}>
             {torrents.length} torrent{torrents.length !== 1 ? 's' : ''}
           </span>
@@ -379,6 +459,153 @@ function App() {
           {formatSpeed(totalDown)}
         </span>
       </footer>
+
+      {/* DHT Nodes Panel */}
+      {showDHTPanel && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ padding: '16px' }}
+          onClick={() => setShowDHTPanel(false)}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-md" />
+          <div 
+            className="glass relative w-full max-w-2xl rounded-2xl border border-[var(--border)] shadow-[var(--shadow-lg)] animate-fade-in"
+            style={{ background: 'var(--surface-solid)', padding: '24px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div 
+                  className="w-9 h-9 rounded-xl"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: dhtStatus.running ? 'var(--accent-glow)' : 'var(--border)', flexShrink: 0 }}
+                >
+                  <Globe className="w-4 h-4" style={{ color: dhtStatus.running ? 'var(--accent)' : 'var(--text-muted)' }} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold" style={{ color: 'var(--text)' }}>DHT Network</h2>
+                  <div className="text-[11px]" style={{ color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace" }}>
+                    {dhtStatus.running ? `Port ${dhtStatus.port} · ${dhtStatus.nodeCount} nodes` : 'Offline'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                <button
+                  onClick={refreshDHTNodes}
+                  disabled={dhtNodesLoading}
+                  className="w-8 h-8 rounded-lg hover:bg-[var(--border-strong)] transition-colors border border-[var(--border)]"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Refresh"
+                >
+                  <RefreshCw className={`w-4 h-4 ${dhtNodesLoading ? 'animate-spin' : ''}`} style={{ color: 'var(--text-muted)' }} />
+                </button>
+                <button 
+                  onClick={() => setShowDHTPanel(false)}
+                  className="w-8 h-8 rounded-lg hover:bg-[var(--border-strong)] transition-colors"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+                </button>
+              </div>
+            </div>
+
+            {/* Node ID */}
+            {dhtStatus.running && (
+              <div 
+                className="rounded-lg border border-[var(--border)] text-[11px]"
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', marginBottom: '16px', fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)' }}
+              >
+                <span className="font-semibold" style={{ marginRight: '8px', color: 'var(--text-secondary)' }}>Node ID</span>
+                <span className="truncate flex-1">{dhtStatus.nodeId}</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(dhtStatus.nodeId)}
+                  className="ml-2 hover:text-[var(--text)] transition-colors flex-shrink-0"
+                  title="Copy"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
+            {/* Search */}
+            <div className="relative" style={{ marginBottom: '12px' }}>
+              <Search className="absolute w-3.5 h-3.5" style={{ left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                value={nodeFilter}
+                onChange={e => setNodeFilter(e.target.value)}
+                placeholder="Filter by address or ID..."
+                className="w-full rounded-lg text-xs border border-[var(--border)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                style={{ height: '36px', padding: '0 12px 0 32px', background: 'var(--bg)', color: 'var(--text)', fontFamily: "'JetBrains Mono', monospace" }}
+              />
+            </div>
+
+            {/* Nodes Table */}
+            <div className="flex-1 overflow-auto rounded-lg border border-[var(--border)]" style={{ minHeight: 0 }}>
+              {/* Table Header */}
+              <div 
+                className="text-[10px] font-bold uppercase tracking-wide sticky top-0 border-b border-[var(--border)]"
+                style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', background: 'var(--surface-solid)', color: 'var(--text-muted)' }}
+              >
+                <span style={{ width: '55%' }}>Address</span>
+                <span style={{ width: '30%' }}>Node ID</span>
+                <span style={{ width: '15%', textAlign: 'right' }}>Last Seen</span>
+              </div>
+
+              {/* Nodes */}
+              <div>
+                {dhtNodesLoading && dhtNodes.length === 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  </div>
+                ) : (() => {
+                  const filtered = dhtNodes.filter(n => 
+                    !nodeFilter || n.address.includes(nodeFilter) || n.id.includes(nodeFilter.toLowerCase())
+                  );
+                  return filtered.length === 0 ? (
+                    <div className="text-center text-xs" style={{ padding: '40px', color: 'var(--text-muted)' }}>
+                      {dhtNodes.length === 0 ? 'No nodes discovered yet' : 'No matching nodes'}
+                    </div>
+                  ) : (
+                    filtered.map((node, i) => (
+                      <div
+                        key={node.id + node.address}
+                        className="text-[11px] border-b last:border-b-0 border-[var(--border)] hover:bg-[var(--border)] transition-colors"
+                        style={{ display: 'flex', alignItems: 'center', padding: '6px 16px', fontFamily: "'JetBrains Mono', monospace", animationDelay: `${i * 10}ms` }}
+                      >
+                        <span className="truncate" style={{ width: '55%', color: 'var(--text)' }}>{node.address}</span>
+                        <span className="truncate" style={{ width: '30%', color: 'var(--text-muted)' }}>{node.id.slice(0, 16)}…</span>
+                        <span style={{ width: '15%', textAlign: 'right', color: 'var(--text-muted)' }}>
+                          {(() => {
+                            const d = new Date(node.lastSeen);
+                            const now = new Date();
+                            const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+                            if (diffSec < 60) return `${diffSec}s ago`;
+                            const diffMin = Math.floor(diffSec / 60);
+                            if (diffMin < 60) return `${diffMin}m ago`;
+                            return `${Math.floor(diffMin / 60)}h ago`;
+                          })()}
+                        </span>
+                      </div>
+                    ))
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-[11px]" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px', color: 'var(--text-muted)' }}>
+              <span>{dhtNodes.length} nodes total</span>
+              {dhtStatus.running && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />
+                  Connected
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {showAddModal && (
