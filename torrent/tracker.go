@@ -217,15 +217,9 @@ func (c *PeerCollector) Count() int {
 
 // QueryHTTPTracker queries an HTTP/HTTPS tracker for peers
 func QueryHTTPTracker(trackerURL *url.URL, infoHash, clientID [20]byte, bytesLeft int) (*TrackerResponse, error) {
-	// Try ports in the standard BitTorrent range
-	for port := portRangeStart; port <= portRangeEnd; port++ {
-		announceURL := buildAnnounceURL(trackerURL, infoHash, clientID, port, bytesLeft)
-		resp, err := getTrackerResponse(announceURL)
-		if err == nil {
-			return resp, nil
-		}
-	}
-	return nil, fmt.Errorf("HTTP tracker query failed on all ports")
+	// Use a fixed port from the standard BitTorrent range as our announced listen port
+	announceURL := buildAnnounceURL(trackerURL, infoHash, clientID, portRangeStart, bytesLeft)
+	return getTrackerResponse(announceURL)
 }
 
 // buildAnnounceURL builds the URL to call the tracker
