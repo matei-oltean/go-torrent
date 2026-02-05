@@ -311,7 +311,7 @@ func DownloadPieces(hash, clientID [20]byte, address string, pieces chan *Piece,
 			// check for the piece integrity
 			h := sha1.Sum(res)
 			if !bytes.Equal(h[:], piece.Hash[:]) {
-				log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead", piece.Index, piece.Hash, hash)
+				log.Printf("Piece %d has the wrong sum: expected\n%v got\n%v instead", piece.Index, piece.Hash, h)
 				pieces <- piece
 				continue
 			}
