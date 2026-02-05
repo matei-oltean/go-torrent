@@ -184,7 +184,20 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 
 	// Start download in background
 	go func() {
-		err := torrent.DownloadMagnetWithDHT(ctx, magnetLink, outputPath, a.dht)
+		// Progress callback updates the torrent status
+		onProgress := func(completedPieces, totalPieces int, downloadedBytes, totalBytes int64) {
+			a.mu.Lock()
+			if t, ok := a.torrents[id]; ok {
+				t.Progress = float64(completedPieces) / float64(totalPieces) * 100
+				t.Downloaded = downloadedBytes
+				t.Size = totalBytes
+				if t.Status == "starting" {
+					t.Status = "downloading"
+				}
+			}
+			a.mu.Unlock()
+		}
+		err := torrent.DownloadMagnetWithProgress(ctx, magnetLink, outputPath, a.dht, onProgress)
 		a.mu.Lock()
 		// Check if torrent still exists (might have been removed)
 		if t, ok := a.torrents[id]; ok {
@@ -235,7 +248,19 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 
 	// Start download in background
 	go func() {
-		err := torrent.DownloadWithContext(ctx, filePath, outputPath)
+		// Progress callback updates the torrent status
+		onProgress := func(completedPieces, totalPieces int, downloadedBytes, totalBytes int64) {
+			a.mu.Lock()
+			if t, ok := a.torrents[id]; ok {
+				t.Progress = float64(completedPieces) / float64(totalPieces) * 100
+				t.Downloaded = downloadedBytes
+				if t.Status == "starting" {
+					t.Status = "downloading"
+				}
+			}
+			a.mu.Unlock()
+		}
+		err := torrent.DownloadWithProgress(ctx, filePath, outputPath, onProgress)
 		a.mu.Lock()
 		// Check if torrent still exists (might have been removed)
 		if t, ok := a.torrents[id]; ok {
@@ -314,10 +339,20 @@ func (a *App) ResumeTorrent(id string) error {
 	// Start download in background
 	go func() {
 		var err error
+		// Progress callback updates the torrent status
+		onProgress := func(completedPieces, totalPieces int, downloadedBytes, totalBytes int64) {
+			a.mu.Lock()
+			if t, ok := a.torrents[id]; ok {
+				t.Progress = float64(completedPieces) / float64(totalPieces) * 100
+				t.Downloaded = downloadedBytes
+				t.Size = totalBytes
+			}
+			a.mu.Unlock()
+		}
 		if magnetLink != "" {
-			err = torrent.DownloadMagnetWithDHT(ctx, magnetLink, outputPath, a.dht)
+			err = torrent.DownloadMagnetWithProgress(ctx, magnetLink, outputPath, a.dht, onProgress)
 		} else if torrentPath != "" {
-			err = torrent.DownloadWithContext(ctx, torrentPath, outputPath)
+			err = torrent.DownloadWithProgress(ctx, torrentPath, outputPath, onProgress)
 		} else {
 			err = fmt.Errorf("no source available for resume")
 		}
