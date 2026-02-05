@@ -14,7 +14,27 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-go-torrent
+# Built binary
+/go-torrent
 
 # DHT persisted nodes
 .dht_nodes.json
+
+# Wails / Frontend
+cmd/go-torrent-ui/frontend/node_modules/
+cmd/go-torrent-ui/frontend/dist/
+cmd/go-torrent-ui/build/bin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+# Downloads
+downloads/
+*.iso
+*.torrent

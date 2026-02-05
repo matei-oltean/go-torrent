@@ -45,6 +45,18 @@ go build
 - DHT (Distributed Hash Table) for trackerless downloads
 - Peer addresses from magnet links (`x.pe` parameter)
 
+## GUI
+
+A desktop GUI is available in `cmd/go-torrent-ui/`. Built with Wails (Go + React).
+
+```bash
+cd cmd/go-torrent-ui
+wails dev    # Development with hot reload
+wails build  # Production build
+```
+
+See [cmd/go-torrent-ui/README.md](cmd/go-torrent-ui/README.md) for more details.
+
 ## Roadmap
 
 - [x] Core BitTorrent protocol (BEP 3)
@@ -53,5 +65,5 @@ go build
 - [x] Extension protocol (BEP 10)
 - [x] DHT (BEP 5)
 - [x] Magnet link downloads
+- [x] GUI (Wails + React)
 - [ ] Seeding support
-- [ ] GUI
