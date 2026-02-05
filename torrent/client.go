@@ -29,10 +29,10 @@ func clientID() ([20]byte, error) {
 	return id, err
 }
 
-// downloadPieces retrieves the file as a byte array
+// downloadPiecesWithContext retrieves the file as a byte array
 // from torrent file, a list of peers and a client ID
-// and writes them to the file system
-func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, outDir string) error {
+// and writes them to the file system. Supports cancellation via context.
+func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr []string, clientID [20]byte, outDir string) error {
 	fileLen := inf.Length
 	pieceLen := inf.PieceLength
 	numPieces := len(inf.Pieces)
@@ -42,11 +42,14 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 	pieceToFile := make(map[int][]int, numPieces)
 	// fWriters maps a file index to its file descriptor
 	fWriters := make(map[int]*fileDescriptor, numFiles)
-	defer func() {
+	
+	// Cleanup function to close all open file handles
+	cleanup := func() {
 		for _, val := range fWriters {
 			val.FileWriter.Close()
 		}
-	}()
+	}
+	defer cleanup()
 	for i, f := range inf.Files {
 		path := filepath.Join(outDir, f.Path)
 		os.MkdirAll(filepath.Dir(path), os.ModePerm)
@@ -101,49 +104,56 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 	// Parse the results as they come and copy them to file
 	nextNotification := notificationStep
 	for done := 1; done <= numPieces; done++ {
-		result := <-results
-		// write to the associated files
-		for _, i := range pieceToFile[result.Index] {
-			f := files[i]
-			pieceStart := result.Index * pieceLen
-			// start writing in the file at fileOffset
-			// start reading the result at resOffset
-			resOffset, fileOffset := 0, pieceStart-f.CumStart
-			if fileOffset < 0 {
-				resOffset, fileOffset = -fileOffset, 0
+		// Check for cancellation
+		select {
+		case <-ctx.Done():
+			log.Printf("Download cancelled")
+			return ctx.Err()
+		case result := <-results:
+			// write to the associated files
+			for _, i := range pieceToFile[result.Index] {
+				f := files[i]
+				pieceStart := result.Index * pieceLen
+				// start writing in the file at fileOffset
+				// start reading the result at resOffset
+				resOffset, fileOffset := 0, pieceStart-f.CumStart
+				if fileOffset < 0 {
+					resOffset, fileOffset = -fileOffset, 0
+				}
+				// write the result till end
+				end := len(result.Value)
+				if end+pieceStart > f.CumStart+f.Length {
+					end = f.CumStart + f.Length - pieceStart
+				}
+				fd := fWriters[i]
+				n, err := fd.FileWriter.WriteAt(result.Value[resOffset:end], int64(fileOffset))
+				if err != nil {
+					return err
+				}
+				fd.Remaining -= n
+				if fd.Remaining == 0 {
+					fd.FileWriter.Close()
+					delete(fWriters, i)
+					log.Printf("Finished downloading %s", filepath.Base(f.Path))
+				}
 			}
-			// write the result till end
-			end := len(result.Value)
-			if end+pieceStart > f.CumStart+f.Length {
-				end = f.CumStart + f.Length - pieceStart
-			}
-			fd := fWriters[i]
-			n, err := fd.FileWriter.WriteAt(result.Value[resOffset:end], int64(fileOffset))
-			if err != nil {
-				return err
-			}
-			fd.Remaining -= n
-			if fd.Remaining == 0 {
-				fd.FileWriter.Close()
-				delete(fWriters, i)
-				log.Printf("Finished downloading %s", filepath.Base(f.Path))
-			}
-		}
 
-		for p := float64(done) / float64(numPieces) * 100; p > float64(nextNotification); nextNotification += notificationStep {
-			log.Printf("Progress (%.2f%%)", p)
-		}
-		if done%10 == 0 {
-			log.Printf("Downloaded %d/%d pieces", done, numPieces)
+			for p := float64(done) / float64(numPieces) * 100; p > float64(nextNotification); nextNotification += notificationStep {
+				log.Printf("Progress (%.2f%%)", p)
+			}
+			if done%10 == 0 {
+				log.Printf("Downloaded %d/%d pieces", done, numPieces)
+			}
 		}
 	}
 	return nil
 }
 
-// Download retrieves the file and saves it to the specified path
+// DownloadWithContext retrieves the file and saves it to the specified path
 // if the path is empty, saves it to the folder of the torrent file
 // with the default name coming from the torrent file
-func Download(torrentPath, outputPath string) error {
+// Supports cancellation via context.
+func DownloadWithContext(ctx context.Context, torrentPath, outputPath string) error {
 	id, err := clientID()
 	if err != nil {
 		return err
@@ -166,15 +176,19 @@ func Download(torrentPath, outputPath string) error {
 		return err
 	}
 	log.Printf("Received %d peers from tracker", len(peers.PeersAddresses))
-	err = downloadPieces(t.Info, peers.PeersAddresses, id, outDir)
-	if err != nil {
-		return err
-	}
-	return nil
+	return downloadPiecesWithContext(ctx, t.Info, peers.PeersAddresses, id, outDir)
 }
 
-// DownloadMagnet downloads a torrent from a magnet link using DHT and trackers
-func DownloadMagnet(magnetLink, outputPath string) error {
+// Download retrieves the file and saves it to the specified path
+// if the path is empty, saves it to the folder of the torrent file
+// with the default name coming from the torrent file
+func Download(torrentPath, outputPath string) error {
+	return DownloadWithContext(context.Background(), torrentPath, outputPath)
+}
+
+// DownloadMagnetWithContext downloads a torrent from a magnet link using DHT and trackers
+// Supports cancellation via context.
+func DownloadMagnetWithContext(ctx context.Context, magnetLink, outputPath string) error {
 	magnet, err := ParseMagnet(magnetLink)
 	if err != nil {
 		return fmt.Errorf("failed to parse magnet link: %w", err)
@@ -201,8 +215,9 @@ func DownloadMagnet(magnetLink, outputPath string) error {
 
 	// Start DHT for peer discovery
 	var d *dht.DHT
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Use the passed context for DHT and download
+	dhtCtx, dhtCancel := context.WithCancel(ctx)
+	defer dhtCancel()
 
 	d, err = dht.New()
 	if err != nil {
@@ -210,7 +225,7 @@ func DownloadMagnet(magnetLink, outputPath string) error {
 	} else {
 		defer d.Stop()
 
-		if err := d.Start(ctx); err != nil {
+		if err := d.Start(dhtCtx); err != nil {
 			log.Printf("DHT: failed to start: %v", err)
 			d = nil
 		} else {
@@ -256,11 +271,17 @@ func DownloadMagnet(magnetLink, outputPath string) error {
 	log.Printf("Total peers: %d", collector.Count())
 
 	// Fetch metadata and download file
-	return downloadFromPeers(magnet.Hash, id, collector.Peers(), outputPath)
+	return downloadFromPeersWithContext(ctx, magnet.Hash, id, collector.Peers(), outputPath)
 }
 
-// downloadFromPeers fetches metadata from peers and downloads the torrent
-func downloadFromPeers(infoHash, clientID [20]byte, peers []string, outputPath string) error {
+// DownloadMagnet downloads a torrent from a magnet link using DHT and trackers
+func DownloadMagnet(magnetLink, outputPath string) error {
+	return DownloadMagnetWithContext(context.Background(), magnetLink, outputPath)
+}
+
+// downloadFromPeersWithContext fetches metadata from peers and downloads the torrent
+// Supports cancellation via context.
+func downloadFromPeersWithContext(ctx context.Context, infoHash, clientID [20]byte, peers []string, outputPath string) error {
 	// Create channels for metadata exchange
 	pieces := make(chan *Piece)
 	info := make(chan *TorrentInfo)
@@ -273,16 +294,20 @@ func downloadFromPeers(infoHash, clientID [20]byte, peers []string, outputPath s
 
 	// Wait for metadata from any peer
 	log.Printf("Fetching torrent metadata from peers...")
-	torrentInfo := <-info
-	log.Printf("Received metadata: %s (%d pieces)", torrentInfo.Name, len(torrentInfo.Pieces))
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case torrentInfo := <-info:
+		log.Printf("Received metadata: %s (%d pieces)", torrentInfo.Name, len(torrentInfo.Pieces))
 
-	// Set up output directory
-	outDir := outputPath
-	if torrentInfo.Multi() {
-		outDir = filepath.Join(outDir, torrentInfo.Name)
-		os.MkdirAll(outDir, os.ModePerm)
+		// Set up output directory
+		outDir := outputPath
+		if torrentInfo.Multi() {
+			outDir = filepath.Join(outDir, torrentInfo.Name)
+			os.MkdirAll(outDir, os.ModePerm)
+		}
+
+		// Download the actual file
+		return downloadPiecesWithContext(ctx, torrentInfo, peers, clientID, outDir)
 	}
-
-	// Download the actual file
-	return downloadPieces(torrentInfo, peers, clientID, outDir)
 }

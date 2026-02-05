@@ -27,15 +27,17 @@ type TorrentStatus struct {
 
 // App struct
 type App struct {
-	ctx      context.Context
-	torrents map[string]*TorrentStatus
-	mu       sync.RWMutex
+	ctx         context.Context
+	torrents    map[string]*TorrentStatus
+	cancelFuncs map[string]context.CancelFunc
+	mu          sync.RWMutex
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		torrents: make(map[string]*TorrentStatus),
+		torrents:    make(map[string]*TorrentStatus),
+		cancelFuncs: make(map[string]context.CancelFunc),
 	}
 }
 
@@ -66,25 +68,39 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 
 	id := magnet.InfoHashHex()
 	
+	// Create a cancellable context for this download
+	ctx, cancel := context.WithCancel(context.Background())
+	
 	a.mu.Lock()
 	a.torrents[id] = &TorrentStatus{
 		ID:     id,
 		Name:   magnet.DisplayName(),
 		Status: "starting",
 	}
+	a.cancelFuncs[id] = cancel
 	a.mu.Unlock()
 
 	// Start download in background
 	go func() {
-		err := torrent.DownloadMagnet(magnetLink, outputPath)
+		err := torrent.DownloadMagnetWithContext(ctx, magnetLink, outputPath)
 		a.mu.Lock()
-		if err != nil {
-			a.torrents[id].Status = "error"
-			a.torrents[id].Error = err.Error()
-		} else {
-			a.torrents[id].Status = "completed"
-			a.torrents[id].Progress = 100
+		// Check if torrent still exists (might have been removed)
+		if t, ok := a.torrents[id]; ok {
+			if err != nil {
+				if err == context.Canceled {
+					t.Status = "cancelled"
+					t.Error = "Download cancelled"
+				} else {
+					t.Status = "error"
+					t.Error = err.Error()
+				}
+			} else {
+				t.Status = "completed"
+				t.Progress = 100
+			}
 		}
+		// Clean up cancel func
+		delete(a.cancelFuncs, id)
 		a.mu.Unlock()
 	}()
 
@@ -100,6 +116,9 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 
 	id := fmt.Sprintf("%x", tf.Info.Hash)
 	
+	// Create a cancellable context for this download
+	ctx, cancel := context.WithCancel(context.Background())
+	
 	a.mu.Lock()
 	a.torrents[id] = &TorrentStatus{
 		ID:     id,
@@ -107,28 +126,44 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 		Size:   int64(tf.Info.Length),
 		Status: "starting",
 	}
+	a.cancelFuncs[id] = cancel
 	a.mu.Unlock()
 
 	// Start download in background
 	go func() {
-		err := torrent.Download(filePath, outputPath)
+		err := torrent.DownloadWithContext(ctx, filePath, outputPath)
 		a.mu.Lock()
-		if err != nil {
-			a.torrents[id].Status = "error"
-			a.torrents[id].Error = err.Error()
-		} else {
-			a.torrents[id].Status = "completed"
-			a.torrents[id].Progress = 100
+		// Check if torrent still exists (might have been removed)
+		if t, ok := a.torrents[id]; ok {
+			if err != nil {
+				if err == context.Canceled {
+					t.Status = "cancelled"
+					t.Error = "Download cancelled"
+				} else {
+					t.Status = "error"
+					t.Error = err.Error()
+				}
+			} else {
+				t.Status = "completed"
+				t.Progress = 100
+			}
 		}
+		// Clean up cancel func
+		delete(a.cancelFuncs, id)
 		a.mu.Unlock()
 	}()
 
 	return id, nil
 }
 
-// RemoveTorrent removes a torrent from the list
+// RemoveTorrent removes a torrent from the list and cancels any ongoing download
 func (a *App) RemoveTorrent(id string) {
 	a.mu.Lock()
+	// Cancel the download if it's still running
+	if cancel, ok := a.cancelFuncs[id]; ok {
+		cancel()
+		delete(a.cancelFuncs, id)
+	}
 	delete(a.torrents, id)
 	a.mu.Unlock()
 }
