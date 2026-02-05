@@ -23,6 +23,11 @@ type TorrentStatus struct {
 	Downloaded  int64   `json:"downloaded"`
 	Status      string  `json:"status"` // "downloading", "paused", "completed", "error"
 	Error       string  `json:"error,omitempty"`
+	
+	// Internal fields for pause/resume (not exposed to JSON)
+	torrentPath string
+	magnetLink  string
+	outputPath  string
 }
 
 // App struct
@@ -73,9 +78,11 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 	
 	a.mu.Lock()
 	a.torrents[id] = &TorrentStatus{
-		ID:     id,
-		Name:   magnet.DisplayName(),
-		Status: "starting",
+		ID:         id,
+		Name:       magnet.DisplayName(),
+		Status:     "starting",
+		magnetLink: magnetLink,
+		outputPath: outputPath,
 	}
 	a.cancelFuncs[id] = cancel
 	a.mu.Unlock()
@@ -88,8 +95,8 @@ func (a *App) AddMagnet(magnetLink string, outputPath string) (string, error) {
 		if t, ok := a.torrents[id]; ok {
 			if err != nil {
 				if err == context.Canceled {
-					t.Status = "cancelled"
-					t.Error = "Download cancelled"
+					t.Status = "paused"
+					t.Error = ""
 				} else {
 					t.Status = "error"
 					t.Error = err.Error()
@@ -121,10 +128,12 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 	
 	a.mu.Lock()
 	a.torrents[id] = &TorrentStatus{
-		ID:     id,
-		Name:   tf.Info.Name,
-		Size:   int64(tf.Info.Length),
-		Status: "starting",
+		ID:          id,
+		Name:        tf.Info.Name,
+		Size:        int64(tf.Info.Length),
+		Status:      "starting",
+		torrentPath: filePath,
+		outputPath:  outputPath,
 	}
 	a.cancelFuncs[id] = cancel
 	a.mu.Unlock()
@@ -137,8 +146,8 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 		if t, ok := a.torrents[id]; ok {
 			if err != nil {
 				if err == context.Canceled {
-					t.Status = "cancelled"
-					t.Error = "Download cancelled"
+					t.Status = "paused"
+					t.Error = ""
 				} else {
 					t.Status = "error"
 					t.Error = err.Error()
@@ -156,6 +165,90 @@ func (a *App) AddTorrentFile(filePath string, outputPath string) (string, error)
 	return id, nil
 }
 
+// PauseTorrent pauses a downloading torrent
+func (a *App) PauseTorrent(id string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	
+	t, ok := a.torrents[id]
+	if !ok {
+		return fmt.Errorf("torrent not found")
+	}
+	
+	if t.Status == "paused" || t.Status == "completed" {
+		return nil // Already paused or completed
+	}
+	
+	// Cancel the download (will be marked as paused)
+	if cancel, ok := a.cancelFuncs[id]; ok {
+		cancel()
+		delete(a.cancelFuncs, id)
+	}
+	
+	return nil
+}
+
+// ResumeTorrent resumes a paused torrent
+func (a *App) ResumeTorrent(id string) error {
+	a.mu.Lock()
+	
+	t, ok := a.torrents[id]
+	if !ok {
+		a.mu.Unlock()
+		return fmt.Errorf("torrent not found")
+	}
+	
+	if t.Status != "paused" && t.Status != "error" {
+		a.mu.Unlock()
+		return nil // Not paused or error, nothing to resume
+	}
+	
+	// Create new context for resumed download
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancelFuncs[id] = cancel
+	t.Status = "downloading"
+	t.Error = ""
+	
+	// Store values before unlocking
+	magnetLink := t.magnetLink
+	torrentPath := t.torrentPath
+	outputPath := t.outputPath
+	
+	a.mu.Unlock()
+	
+	// Start download in background
+	go func() {
+		var err error
+		if magnetLink != "" {
+			err = torrent.DownloadMagnetWithContext(ctx, magnetLink, outputPath)
+		} else if torrentPath != "" {
+			err = torrent.DownloadWithContext(ctx, torrentPath, outputPath)
+		} else {
+			err = fmt.Errorf("no source available for resume")
+		}
+		
+		a.mu.Lock()
+		if t, ok := a.torrents[id]; ok {
+			if err != nil {
+				if err == context.Canceled {
+					t.Status = "paused"
+					t.Error = ""
+				} else {
+					t.Status = "error"
+					t.Error = err.Error()
+				}
+			} else {
+				t.Status = "completed"
+				t.Progress = 100
+			}
+		}
+		delete(a.cancelFuncs, id)
+		a.mu.Unlock()
+	}()
+	
+	return nil
+}
+
 // RemoveTorrent removes a torrent from the list and cancels any ongoing download
 func (a *App) RemoveTorrent(id string) {
 	a.mu.Lock()
@@ -166,6 +259,11 @@ func (a *App) RemoveTorrent(id string) {
 	}
 	delete(a.torrents, id)
 	a.mu.Unlock()
+	
+	// Delete the state file (outside lock to avoid blocking)
+	if err := torrent.DeleteStateByHex(id); err != nil {
+		log.Printf("Failed to delete state file: %v", err)
+	}
 }
 
 // SelectTorrentFile opens a file dialog to select a .torrent file

@@ -8,7 +8,11 @@ export function AddTorrentFile(arg1:string,arg2:string):Promise<string>;
 
 export function GetTorrents():Promise<Array<main.TorrentStatus>>;
 
+export function PauseTorrent(arg1:string):Promise<void>;
+
 export function RemoveTorrent(arg1:string):Promise<void>;
+
+export function ResumeTorrent(arg1:string):Promise<void>;
 
 export function SelectOutputFolder():Promise<string>;
 

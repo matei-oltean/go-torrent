@@ -32,43 +32,100 @@ func clientID() ([20]byte, error) {
 // downloadPiecesWithContext retrieves the file as a byte array
 // from torrent file, a list of peers and a client ID
 // and writes them to the file system. Supports cancellation via context.
-func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr []string, clientID [20]byte, outDir string) error {
+// If state is provided, it will be used to skip already downloaded pieces and track progress.
+func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr []string, clientID [20]byte, outDir string, state *DownloadState) error {
 	fileLen := inf.Length
 	pieceLen := inf.PieceLength
 	numPieces := len(inf.Pieces)
 	files := inf.Files
 	numFiles := len(files)
+	
+	// Create or use provided state
+	if state == nil {
+		state = NewDownloadState(inf.Hash, inf.Name, outDir, numPieces, pieceLen, fileLen)
+		state.AddPeers(peersAddr)
+	}
+	
 	// pieceToFile maps a piece index to the indices of the files it corresponds to
 	pieceToFile := make(map[int][]int, numPieces)
 	// fWriters maps a file index to its file descriptor
 	fWriters := make(map[int]*fileDescriptor, numFiles)
 	
-	// Cleanup function to close all open file handles
+	// Cleanup function to close all open file handles and save state
 	cleanup := func() {
 		for _, val := range fWriters {
 			val.FileWriter.Close()
 		}
+		// Save state on cleanup
+		if err := state.Save(); err != nil {
+			log.Printf("Failed to save download state: %v", err)
+		}
 	}
 	defer cleanup()
+	
+	// Check if we're resuming (some pieces already downloaded)
+	resuming := state.CompletedPieces() > 0
+	
 	for i, f := range inf.Files {
 		path := filepath.Join(outDir, f.Path)
 		os.MkdirAll(filepath.Dir(path), os.ModePerm)
-		fd, err := os.Create(path)
-		if err != nil {
-			return err
-		}
-		_, err = fd.Seek(int64(f.Length-1), 0)
-		if err != nil {
-			return err
-		}
-		_, err = fd.Write([]byte{0})
-		if err != nil {
-			return err
+		
+		var fd *os.File
+		var err error
+		
+		if resuming {
+			// Open existing file for writing
+			fd, err = os.OpenFile(path, os.O_RDWR, 0644)
+			if err != nil {
+				// File doesn't exist, create it
+				fd, err = os.Create(path)
+				if err != nil {
+					return err
+				}
+				_, err = fd.Seek(int64(f.Length-1), 0)
+				if err != nil {
+					return err
+				}
+				_, err = fd.Write([]byte{0})
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			fd, err = os.Create(path)
+			if err != nil {
+				return err
+			}
+			_, err = fd.Seek(int64(f.Length-1), 0)
+			if err != nil {
+				return err
+			}
+			_, err = fd.Write([]byte{0})
+			if err != nil {
+				return err
+			}
 		}
 		fWriters[i] = &fileDescriptor{fd, f.Length}
 	}
+	
+	// Count pieces we need to download (skip already completed ones)
+	piecesToDownload := 0
+	for i := range numPieces {
+		if !state.IsPieceComplete(i) {
+			piecesToDownload++
+		}
+	}
+	
+	// If already complete, we're done
+	if piecesToDownload == 0 {
+		log.Printf("Download already complete")
+		return nil
+	}
+	
+	log.Printf("Resuming download: %d/%d pieces remaining", piecesToDownload, numPieces)
+	
 	// Create chan of pieces to download
-	pieces := make(chan *Piece, fileLen)
+	pieces := make(chan *Piece, piecesToDownload)
 	// Create chan of results to collect
 	results := make(chan *Result)
 	pos := 0
@@ -79,11 +136,16 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 		if i == numPieces-1 && fileLen%pieceLen != 0 {
 			length = fileLen % pieceLen
 		}
-		pieces <- &Piece{
-			Index:  i,
-			Hash:   hash,
-			Length: length,
+		
+		// Only queue pieces that aren't already downloaded
+		if !state.IsPieceComplete(i) {
+			pieces <- &Piece{
+				Index:  i,
+				Hash:   hash,
+				Length: length,
+			}
 		}
+		
 		pos += length
 		var f []int
 		for ; fileIndex < numFiles && files[fileIndex].CumStart+files[fileIndex].Length < pos; fileIndex++ {
@@ -103,13 +165,18 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 
 	// Parse the results as they come and copy them to file
 	nextNotification := notificationStep
-	for done := 1; done <= numPieces; done++ {
+	completedInSession := 0
+	for done := 1; done <= piecesToDownload; done++ {
 		// Check for cancellation
 		select {
 		case <-ctx.Done():
-			log.Printf("Download cancelled")
+			log.Printf("Download cancelled/paused, saving state...")
 			return ctx.Err()
 		case result := <-results:
+			// Mark piece as complete in state
+			state.MarkPieceComplete(result.Index)
+			completedInSession++
+			
 			// write to the associated files
 			for _, i := range pieceToFile[result.Index] {
 				f := files[i]
@@ -138,14 +205,26 @@ func downloadPiecesWithContext(ctx context.Context, inf *TorrentInfo, peersAddr 
 				}
 			}
 
-			for p := float64(done) / float64(numPieces) * 100; p > float64(nextNotification); nextNotification += notificationStep {
+			// Progress based on total pieces (including already downloaded)
+			totalCompleted := state.CompletedPieces()
+			for p := float64(totalCompleted) / float64(numPieces) * 100; p > float64(nextNotification); nextNotification += notificationStep {
 				log.Printf("Progress (%.2f%%)", p)
 			}
-			if done%10 == 0 {
-				log.Printf("Downloaded %d/%d pieces", done, numPieces)
+			if completedInSession%10 == 0 {
+				log.Printf("Downloaded %d/%d pieces", totalCompleted, numPieces)
+				// Save state periodically
+				if err := state.Save(); err != nil {
+					log.Printf("Warning: failed to save state: %v", err)
+				}
 			}
 		}
 	}
+	
+	// Download complete - delete state file
+	if err := state.Delete(); err != nil {
+		log.Printf("Warning: failed to delete state file: %v", err)
+	}
+	
 	return nil
 }
 
@@ -171,12 +250,30 @@ func DownloadWithContext(ctx context.Context, torrentPath, outputPath string) er
 		outDir = filepath.Join(outDir, t.Info.Name)
 		os.MkdirAll(outDir, os.ModePerm)
 	}
+	
+	// Try to load existing state for resuming
+	state, err := LoadState(t.Info.Hash)
+	if err != nil {
+		// No existing state, will create new one
+		state = nil
+	} else {
+		log.Printf("Found existing state, resuming download...")
+	}
+	
 	peers, err := t.GetPeers(id)
 	if err != nil {
 		return err
 	}
 	log.Printf("Received %d peers from tracker", len(peers.PeersAddresses))
-	return downloadPiecesWithContext(ctx, t.Info, peers.PeersAddresses, id, outDir)
+	
+	// Create state if not resuming
+	if state == nil {
+		state = NewDownloadState(t.Info.Hash, t.Info.Name, outDir, len(t.Info.Pieces), t.Info.PieceLength, t.Info.Length)
+	}
+	state.SetTorrentPath(torrentPath)
+	state.AddPeers(peers.PeersAddresses)
+	
+	return downloadPiecesWithContext(ctx, t.Info, peers.PeersAddresses, id, outDir, state)
 }
 
 // Download retrieves the file and saves it to the specified path
@@ -271,7 +368,7 @@ func DownloadMagnetWithContext(ctx context.Context, magnetLink, outputPath strin
 	log.Printf("Total peers: %d", collector.Count())
 
 	// Fetch metadata and download file
-	return downloadFromPeersWithContext(ctx, magnet.Hash, id, collector.Peers(), outputPath)
+	return downloadFromPeersWithContext(ctx, magnet.Hash, id, collector.Peers(), outputPath, magnetLink)
 }
 
 // DownloadMagnet downloads a torrent from a magnet link using DHT and trackers
@@ -281,7 +378,15 @@ func DownloadMagnet(magnetLink, outputPath string) error {
 
 // downloadFromPeersWithContext fetches metadata from peers and downloads the torrent
 // Supports cancellation via context.
-func downloadFromPeersWithContext(ctx context.Context, infoHash, clientID [20]byte, peers []string, outputPath string) error {
+func downloadFromPeersWithContext(ctx context.Context, infoHash, clientID [20]byte, peers []string, outputPath string, magnetLink string) error {
+	// Try to load existing state for resuming
+	state, err := LoadState(infoHash)
+	if err != nil {
+		state = nil
+	} else {
+		log.Printf("Found existing state, resuming download...")
+	}
+	
 	// Create channels for metadata exchange
 	pieces := make(chan *Piece)
 	info := make(chan *TorrentInfo)
@@ -307,7 +412,14 @@ func downloadFromPeersWithContext(ctx context.Context, infoHash, clientID [20]by
 			os.MkdirAll(outDir, os.ModePerm)
 		}
 
+		// Create state if not resuming
+		if state == nil {
+			state = NewDownloadState(torrentInfo.Hash, torrentInfo.Name, outDir, len(torrentInfo.Pieces), torrentInfo.PieceLength, torrentInfo.Length)
+		}
+		state.SetMagnetLink(magnetLink)
+		state.AddPeers(peers)
+
 		// Download the actual file
-		return downloadPiecesWithContext(ctx, torrentInfo, peers, clientID, outDir)
+		return downloadPiecesWithContext(ctx, torrentInfo, peers, clientID, outDir, state)
 	}
 }

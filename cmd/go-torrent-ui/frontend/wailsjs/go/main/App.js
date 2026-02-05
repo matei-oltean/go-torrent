@@ -14,8 +14,16 @@ export function GetTorrents() {
   return window['go']['main']['App']['GetTorrents']();
 }
 
+export function PauseTorrent(arg1) {
+  return window['go']['main']['App']['PauseTorrent'](arg1);
+}
+
 export function RemoveTorrent(arg1) {
   return window['go']['main']['App']['RemoveTorrent'](arg1);
+}
+
+export function ResumeTorrent(arg1) {
+  return window['go']['main']['App']['ResumeTorrent'](arg1);
 }
 
 export function SelectOutputFolder() {

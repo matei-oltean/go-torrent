@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   Sun, Moon, Plus, Link2, Trash2, Download, Users, 
   AlertCircle, CheckCircle2, Loader2, File, FolderOpen, 
-  Clipboard, ChevronDown, Pause,
+  Clipboard, ChevronDown, Pause, Play,
   Zap, Clock, HardDrive, Sparkles, X
 } from 'lucide-react';
 import './style.css';
@@ -30,6 +30,8 @@ declare global {
           AddMagnet(magnetLink: string, outputPath: string): Promise<string>;
           AddTorrentFile(filePath: string, outputPath: string): Promise<string>;
           RemoveTorrent(id: string): Promise<void>;
+          PauseTorrent(id: string): Promise<void>;
+          ResumeTorrent(id: string): Promise<void>;
           SelectTorrentFile(): Promise<string>;
           SelectOutputFolder(): Promise<string>;
         };
@@ -156,6 +158,24 @@ function App() {
       fetchTorrents();
     } catch (e) {
       console.error('Failed to remove:', e);
+    }
+  };
+
+  const handlePause = async (id: string) => {
+    try {
+      await window.go.main.App.PauseTorrent(id);
+      fetchTorrents();
+    } catch (e) {
+      console.error('Failed to pause:', e);
+    }
+  };
+
+  const handleResume = async (id: string) => {
+    try {
+      await window.go.main.App.ResumeTorrent(id);
+      fetchTorrents();
+    } catch (e) {
+      console.error('Failed to resume:', e);
     }
   };
 
@@ -310,6 +330,8 @@ function App() {
                     selected={selectedId === t.id}
                     onSelect={() => setSelectedId(t.id)}
                     onRemove={() => handleRemove(t.id)}
+                    onPause={() => handlePause(t.id)}
+                    onResume={() => handleResume(t.id)}
                     delay={i * 50}
                   />
                 ))}
@@ -327,6 +349,8 @@ function App() {
                     selected={selectedId === t.id}
                     onSelect={() => setSelectedId(t.id)}
                     onRemove={() => handleRemove(t.id)}
+                    onPause={() => handlePause(t.id)}
+                    onResume={() => handleResume(t.id)}
                     delay={i * 50}
                   />
                 ))}
@@ -528,16 +552,20 @@ function TorrentSection({ title, count, children, accent }: { title: string; cou
   );
 }
 
-function TorrentCard({ torrent, selected, onSelect, onRemove, delay = 0 }: { 
+function TorrentCard({ torrent, selected, onSelect, onRemove, onPause, onResume, delay = 0 }: { 
   torrent: TorrentStatus; 
   selected: boolean; 
   onSelect: () => void; 
   onRemove: () => void;
+  onPause: () => void;
+  onResume: () => void;
   delay?: number;
 }) {
   const remaining = torrent.size - torrent.downloaded;
   const eta = formatETA(remaining, torrent.downSpeed);
   const isActive = torrent.status === 'downloading' || torrent.status === 'starting';
+  const isPaused = torrent.status === 'paused';
+  const canPauseResume = isActive || isPaused || torrent.status === 'error';
 
   return (
     <div
@@ -583,13 +611,26 @@ function TorrentCard({ torrent, selected, onSelect, onRemove, delay = 0 }: {
         </div>
 
         {/* Actions & Progress */}
-        <div className="flex items-center flex-shrink-0" style={{ gap: '12px' }}>
+        <div className="flex items-center flex-shrink-0" style={{ gap: '8px' }}>
           <span 
             className="text-xs font-bold tabular-nums w-10 text-right"
             style={{ color: 'var(--accent)', fontFamily: "'JetBrains Mono', monospace" }}
           >
             {torrent.progress.toFixed(0)}%
           </span>
+          {canPauseResume && (
+            <button 
+              onClick={e => { e.stopPropagation(); isPaused || torrent.status === 'error' ? onResume() : onPause(); }} 
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--accent-glow)] transition-all opacity-0 group-hover:opacity-100"
+              title={isPaused || torrent.status === 'error' ? 'Resume' : 'Pause'}
+            >
+              {isPaused || torrent.status === 'error' ? (
+                <Play className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
+              ) : (
+                <Pause className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+              )}
+            </button>
+          )}
           <button 
             onClick={e => { e.stopPropagation(); onRemove(); }} 
             className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition-all opacity-0 group-hover:opacity-100"

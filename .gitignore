@@ -38,3 +38,9 @@ Thumbs.db
 downloads/
 *.iso
 *.torrent
+
+# Download state cache
+.go-torrent/
+
+# Vite cache
+cmd/go-torrent-ui/frontend/.vite/
