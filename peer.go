@@ -11,12 +11,18 @@ import (
 	"time"
 )
 
-// chunkSize is the max length that can be downloaded at once
+// chunkSize is the max length that can be downloaded at once (16 KiB per BEP 3)
 // it is also the size of the payload for a metadata message
 const chunkSize int = 1 << 14
 
 // maxRequests is the max number of requests that can be queued up at once
 const maxRequests int = 5
+
+// peerConnectTimeout is the timeout for establishing a TCP connection to a peer
+const peerConnectTimeout = 5 * time.Second
+
+// peerReadTimeout is the deadline for reading a piece from a peer
+const peerReadTimeout = 20 * time.Second
 
 type chunkType int
 
@@ -59,7 +65,7 @@ type peer struct {
 
 // newPeer creates a new peer from a handshake and a peer address
 func newPeer(handshake []byte, address string) (*peer, error) {
-	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	conn, err := net.DialTimeout("tcp", address, peerConnectTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +223,7 @@ func (p *peer) downloadPiece(piece *Piece, info bool) ([]byte, error) {
 	res := make([]byte, piece.Length)
 	i := 0
 	// Add a deadline so that we do not wait for stuck peers
-	p.conn.SetDeadline(time.Now().Add(20 * time.Second))
+	p.conn.SetDeadline(time.Now().Add(peerReadTimeout))
 	defer p.conn.SetDeadline(time.Time{})
 
 	for downloaded < piece.Length {

@@ -13,6 +13,12 @@ import (
 	"strconv"
 )
 
+// BitTorrent client port range (BEP 3 recommends 6881-6889)
+const (
+	portRangeStart = 6881
+	portRangeEnd   = 6889
+)
+
 // SubFile represents a subfile in the case of multi file torrents
 type SubFile struct {
 	CumStart int    // start of the file
@@ -65,10 +71,11 @@ func parseFiles(files []bencode) ([]SubFile, int, error) {
 		if !ok || path.List == nil || len(path.List) == 0 {
 			return nil, 0, fmt.Errorf("file %d missing key path", i)
 		}
-		paths := ""
-		for _, p := range path.List {
-			paths = filepath.Join(paths, p.Str)
+		pathParts := make([]string, len(path.List))
+		for j, p := range path.List {
+			pathParts[j] = p.Str
 		}
+		paths := filepath.Join(pathParts...)
 		res[i] = SubFile{
 			CumStart: totalLen,
 			Length:   length.Int,
@@ -148,8 +155,8 @@ func (inf *TorrentInfo) Multi() bool {
 func (inf *TorrentInfo) getPeersHTTPS(clientID [20]byte, url *url.URL) (*TrackerResponse, error) {
 	var res *TrackerResponse
 	var err error
-	// Try ports from 6881 till 6889 in accordance with the specifications
-	for port := 6881; port < 6890 && res == nil; port++ {
+	// Try ports in the standard BitTorrent range
+	for port := portRangeStart; port <= portRangeEnd && res == nil; port++ {
 		trackerURL := inf.announceURL(clientID, url, port)
 		res, err = getTrackerResponse(trackerURL)
 		if err == nil {

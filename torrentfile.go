@@ -21,6 +21,12 @@ const (
 	aError
 )
 
+// UDP tracker constants
+const (
+	udpMaxRetries  = 8               // max retry attempts for UDP tracker
+	udpBaseTimeout = 15 * time.Second // base timeout, doubles each retry
+)
+
 // udpConn is a simple struct with a connection and its scheme
 type udpConn struct {
 	Conn   *net.UDPConn
@@ -189,14 +195,14 @@ func (t *TorrentFile) getPeersUDP(clientID [20]byte) (*TrackerResponse, error) {
 		k := rand.Intn(j + 1)
 		conns[j], conns[k] = conns[k], conns[j]
 	}
-	// since we are using udp, retry 8 times with an increasing deadline
-	for try := 0; try < 8; try++ {
+	// since we are using udp, retry with an increasing deadline
+	for try := 0; try < udpMaxRetries; try++ {
 		l := len(conns)
 		for k := 0; k < l; k++ {
 			uConn := conns[0]
 			conn := uConn.Conn
 			conns = conns[1:]
-			conn.SetDeadline(time.Now().Add(15 * (1 << try) * time.Second))
+			conn.SetDeadline(time.Now().Add(udpBaseTimeout * (1 << try)))
 			connID, err := connectToUDP(conn)
 			if err != nil {
 				// continue on a timeout
@@ -208,5 +214,5 @@ func (t *TorrentFile) getPeersUDP(clientID [20]byte) (*TrackerResponse, error) {
 			return t.Info.getPeerFromConnectionID(clientID, conn, connID, uConn.Scheme == "udp6")
 		}
 	}
-	return nil, errors.New("timed out after 8 retries")
+	return nil, fmt.Errorf("timed out after %d retries", udpMaxRetries)
 }

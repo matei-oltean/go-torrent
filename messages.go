@@ -107,7 +107,7 @@ func Unchoke() []byte {
 	return msg.serialise()
 }
 
-// Interested returns a serialised unchoke Message
+// Interested returns a serialised interested Message
 func Interested() []byte {
 	msg := &Message{
 		Type:    MInterested,

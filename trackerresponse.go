@@ -9,7 +9,11 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 )
+
+// httpTimeout is the timeout for HTTP tracker requests
+const httpTimeout = 30 * time.Second
 
 // TrackerResponse represents the tracker response to a get message
 type TrackerResponse struct {
@@ -75,7 +79,8 @@ func prettyTrackerBencode(ben *bencode) (*TrackerResponse, error) {
 
 // getTrackerResponse performs the get announce call
 func getTrackerResponse(announceURL string) (*TrackerResponse, error) {
-	res, err := http.Get(announceURL)
+	client := &http.Client{Timeout: httpTimeout}
+	res, err := client.Get(announceURL)
 	if err != nil {
 		return nil, err
 	}

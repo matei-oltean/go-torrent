@@ -11,7 +11,7 @@ const (
 	notificationStep = 5
 )
 
-// fileDescriptor is a file writer plus the remaining bytes to be writtent
+// fileDescriptor is a file writer plus the remaining bytes to be written
 type fileDescriptor struct {
 	FileWriter *os.File
 	Remaining  int
@@ -35,10 +35,10 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 	numFiles := len(files)
 	// pieceToFile maps a piece index to the indices of the files it corresponds to
 	pieceToFile := make(map[int][]int, numPieces)
-	// fReaders maps a file index to its file reader
-	fReaders := make(map[int]*fileDescriptor, numFiles)
+	// fWriters maps a file index to its file descriptor
+	fWriters := make(map[int]*fileDescriptor, numFiles)
 	defer func() {
-		for _, val := range fReaders {
+		for _, val := range fWriters {
 			val.FileWriter.Close()
 		}
 	}()
@@ -57,7 +57,7 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 		if err != nil {
 			return err
 		}
-		fReaders[i] = &fileDescriptor{fd, f.Length}
+		fWriters[i] = &fileDescriptor{fd, f.Length}
 	}
 	// Create chan of pieces to download
 	pieces := make(chan *Piece, fileLen)
@@ -112,7 +112,7 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 			if end+pieceStart > f.CumStart+f.Length {
 				end = f.CumStart + f.Length - pieceStart
 			}
-			fd := fReaders[i]
+			fd := fWriters[i]
 			n, err := fd.FileWriter.WriteAt(result.Value[resOffset:end], int64(fileOffset))
 			if err != nil {
 				return err
@@ -120,7 +120,7 @@ func downloadPieces(inf *TorrentInfo, peersAddr []string, clientID [20]byte, out
 			fd.Remaining -= n
 			if fd.Remaining == 0 {
 				fd.FileWriter.Close()
-				delete(fReaders, i)
+				delete(fWriters, i)
 				log.Printf("Finished downloading %s", filepath.Base(f.Path))
 			}
 		}
