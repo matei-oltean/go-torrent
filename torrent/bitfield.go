@@ -1,4 +1,4 @@
-package main
+package torrent
 
 // bitfield represents a bitfield
 type bitfield []byte

@@ -1,4 +1,4 @@
-package main
+package torrent
 
 // Protocol is the used protocol in our communications
 const Protocol string = "BitTorrent protocol"
