@@ -32,11 +32,11 @@ jobs:
     - name: Run tests
       run: go test -v ./torrent/... ./dht/...
 
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
     - name: Run staticcheck
-      uses: dominikh/staticcheck-action@v1
-      with:
-        version: "latest"
-        install-go: false
+      run: staticcheck ./torrent/... ./dht/... ./cmd/go-torrent/...
 
     - name: Build CLI
       run: go build ./cmd/go-torrent
