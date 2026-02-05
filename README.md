@@ -31,6 +31,20 @@ go build
 ./go-torrent -o /path/to/output "magnet:?xt=urn:btih:..."
 ```
 
+## Features
+
+### Implemented BEPs
+- [BEP 3](https://www.bittorrent.org/beps/bep_0003.html) - The BitTorrent Protocol Specification
+- [BEP 5](https://www.bittorrent.org/beps/bep_0005.html) - DHT Protocol (read-only)
+- [BEP 9](https://www.bittorrent.org/beps/bep_0009.html) - Extension for Peers to Send Metadata Files
+- [BEP 10](https://www.bittorrent.org/beps/bep_0010.html) - Extension Protocol
+- [BEP 15](https://www.bittorrent.org/beps/bep_0015.html) - UDP Tracker Protocol
+
+### Peer Discovery
+- HTTP and UDP trackers
+- DHT (Distributed Hash Table) for trackerless downloads
+- Peer addresses from magnet links (`x.pe` parameter)
+
 ## Roadmap
 
 - [x] Core BitTorrent protocol (BEP 3)

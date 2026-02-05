@@ -30,7 +30,13 @@ jobs:
         fi
 
     - name: Run tests
-      run: go test ./...
+      run: go test -v ./...
+
+    - name: Run staticcheck
+      uses: dominikh/staticcheck-action@v1
+      with:
+        version: "latest"
+        install-go: false
 
     - name: Build
       run: go build .
